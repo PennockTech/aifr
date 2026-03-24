@@ -1,0 +1,15 @@
+# The secrets used in testing
+/.env
+
+# Anything local for configuring access/versions/envs etc
+/.envrc
+
+# Binary
+/aifr
+
+# Build/release artifacts
+/dist/
+
+# Test coverage
+coverage.out
+coverage.html
