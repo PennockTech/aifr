@@ -25,32 +25,32 @@ whichever interface is appropriate.
 ┌─────────────────────────────────────────────────────┐
 │                    aifr binary                      │
 │                                                     │
-│  ┌───────────┐  ┌────────────┐  ┌────────────────┐ │
-│  │  CLI      │  │  MCP       │  │  Skill file    │ │
-│  │  (cobra)  │  │  (stdio /  │  │  generator     │ │
-│  │           │  │   http)    │  │  (emits        │ │
-│  │           │  │            │  │   SKILL.md)    │ │
-│  └─────┬─────┘  └─────┬──────┘  └────────────────┘ │
+│  ┌───────────┐  ┌────────────┐  ┌────────────────┐  │
+│  │  CLI      │  │  MCP       │  │  Skill file    │  │
+│  │  (cobra)  │  │  (stdio /  │  │  generator     │  │
+│  │           │  │   http)    │  │  (emits        │  │
+│  │           │  │            │  │   SKILL.md)    │  │
+│  └─────┬─────┘  └─────┬──────┘  └────────────────┘  │
 │        │              │                             │
 │        └──────┬───────┘                             │
 │               ▼                                     │
 │  ┌─────────────────────────────────────────┐        │
 │  │          Core Engine (internal/engine)  │        │
 │  │                                         │        │
-│  │  ┌───────────┐  ┌──────────────┐       │        │
-│  │  │ Access    │  │ Reader       │       │        │
-│  │  │ Control   │  │ (fs + git)   │       │        │
-│  │  │           │  │              │       │        │
-│  │  │ allow     │  │ chunk/stream │       │        │
-│  │  │ deny      │  │ line/byte/   │       │        │
-│  │  │ sensitive │  │ continuation │       │        │
-│  │  └───────────┘  └──────────────┘       │        │
+│  │  ┌───────────┐  ┌──────────────┐        │        │
+│  │  │ Access    │  │ Reader       │        │        │
+│  │  │ Control   │  │ (fs + git)   │        │        │
+│  │  │           │  │              │        │        │
+│  │  │ allow     │  │ chunk/stream │        │        │
+│  │  │ deny      │  │ line/byte/   │        │        │
+│  │  │ sensitive │  │ continuation │        │        │
+│  │  └───────────┘  └──────────────┘        │        │
 │  │                                         │        │
-│  │  ┌───────────┐  ┌──────────────┐       │        │
-│  │  │ Git       │  │ Cache        │       │        │
-│  │  │ Provider  │  │ (MCP mode    │       │        │
-│  │  │ (go-git)  │  │  only)       │       │        │
-│  │  └───────────┘  └──────────────┘       │        │
+│  │  ┌───────────┐  ┌──────────────┐        │        │
+│  │  │ Git       │  │ Cache        │        │        │
+│  │  │ Provider  │  │ (MCP mode    │        │        │
+│  │  │ (go-git)  │  │  only)       │        │        │
+│  │  └───────────┘  └──────────────┘        │        │
 │  └─────────────────────────────────────────┘        │
 └─────────────────────────────────────────────────────┘
 ```
@@ -123,6 +123,7 @@ TOML config file. Searched in order:
 # Supports globs. Paths are resolved to absolute before matching.
 # If empty, the tool operates in "current directory only" mode:
 # it allows the cwd and everything beneath it.
+# Must support tilde homedir resolution (both ~/ for this user and ~otheruser/)
 allow = [
   "/home/user/projects/**",
   "/etc/nats/**",
@@ -133,6 +134,12 @@ allow = [
 deny = [
   "/home/user/projects/secrets/**",
   "**/.env.production",
+]
+
+# Additional security credentials deny rules to augment (NEVER replace)
+# the default list of sensitive file patterns
+creds_deny = [
+  "**/*.nk",
 ]
 
 # Git repositories to expose tree access for.
@@ -182,12 +189,17 @@ The `internal/accessctl/sensitive.go` file MUST contain a comprehensive list.
 This list is an *implicit deny* that is always active, cannot be overridden by
 the allow-list, and returns the distinct `ACCESS_DENIED_SENSITIVE` error.
 
+Consider if we want exceptions to the deny; this _might conceivably_ be useful
+for things like "allow reading SSH pubkeys so we can test deploy-keys are
+present (but never allow reading SSH private keys)".  Evaluate the trade-offs
+in complexity of allowing this.
+
 The agent implementor should maintain this list. Initial categories and
 examples (target ~200+ patterns):
 
 **SSH & GPG:**
 ```
-**/.ssh/id_*
+**/.ssh/*id_*
 **/.ssh/authorized_keys
 **/.ssh/known_hosts
 **/.ssh/config
@@ -215,6 +227,12 @@ examples (target ~200+ patterns):
 **/.docker/config.json
 **/.docker/daemon.json
 **/kubeconfig*
+```
+
+**NATS**
+```
+**/*.nk
+**/nats/context/*.json*
 ```
 
 **Package manager tokens:**
@@ -309,6 +327,7 @@ examples (target ~200+ patterns):
 ```
 **/.password-store/**
 **/.age/*.txt
+**/*.age
 **/age-key.txt
 **/.sops.yaml
 **/.1password/**
@@ -323,6 +342,11 @@ examples (target ~200+ patterns):
 **/passwd               # only /etc/passwd and similar
 **/master.key
 **/credentials.xml      # Jenkins
+**/*.creds*
+**/*-creds.json
+**/*-creds.yaml
+**/*-creds.yml
+**/*-creds.toml
 ```
 
 **Implementation notes:**
@@ -939,6 +963,13 @@ document as it builds. Record decisions in a `DECISIONS.md` file.
   tools if you need structural code understanding.
 - **Windows support.** Not a priority. Don't break it gratuitously, but
   don't contort the design for Windows path semantics.
+
+### Not-yet Goals
+
+We don't want this yet, but might in future:
+- **Content sniffing.** We might have a tiered approach to possible
+  credentials files and sniff the content internally before deciding to reject
+  returning it to the AI.  Eg, JWTs which contain passwords.
 
 ---
 
