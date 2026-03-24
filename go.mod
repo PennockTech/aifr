@@ -3,6 +3,7 @@ module go.pennock.tech/aifr
 go 1.26.1
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/spf13/cobra v1.10.2
 )
