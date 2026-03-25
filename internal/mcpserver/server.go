@@ -37,7 +37,8 @@ func New(eng *engine.Engine) *Server {
 				"aifr_pathfind to find commands in PATH-like search lists, " +
 				"aifr_wc to count lines/words/bytes, aifr_checksum for file checksums, " +
 				"aifr_hexdump for binary hex dumps, aifr_rev_parse to resolve git refs, " +
-				"and aifr_sysinfo for system inspection (OS, date, uptime, network, routing). " +
+				"aifr_sysinfo for system inspection (OS, date, uptime, network, routing), " +
+				"and aifr_getent to query system databases (passwd, group, services, protocols). " +
 				"For aifr_cat, use format=\"text\" with divider=\"xml\" for token-efficient output.",
 		},
 	)

@@ -18,7 +18,8 @@ sensitive-file blocklist).
 - Computing file checksums (instead of `sha256sum`, `md5sum`)
 - Hex-dumping binary files (instead of `xxd`, `hexdump`)
 - Resolving git refs to commit hashes (instead of `git rev-parse`)
-- System inspection: OS, date, hostname, network, routing (instead of `uname`, `date`, `hostname`, `ip addr`)
+- System inspection: OS, date, hostname, uptime, network, routing (instead of `uname`, `date`, `hostname`, `ip addr`)
+- Querying system databases (instead of `getent`, `grep /etc/passwd`, `cut`)
 
 ## CLI Commands
 
@@ -125,6 +126,16 @@ aifr sysinfo --sections date             # just date/time
 aifr sysinfo --sections os,hostname,uptime
 ```
 
+### Query system databases
+```
+aifr getent passwd                           # all users
+aifr getent passwd root                      # lookup by name
+aifr getent passwd 1000                      # lookup by UID
+aifr getent passwd --fields name,uid,home    # field selection
+aifr getent group docker                     # group lookup
+aifr getent services --fields name,port 443  # service by port
+```
+
 ### Find commands in PATH
 ```
 aifr pathfind git
@@ -175,7 +186,7 @@ All commands output JSON by default. Use `--format text` for human-readable outp
 available as MCP tools: `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
 `aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`,
 `aifr_pathfind`, `aifr_wc`, `aifr_checksum`, `aifr_hexdump`,
-`aifr_rev_parse`, `aifr_sysinfo`.
+`aifr_rev_parse`, `aifr_sysinfo`, `aifr_getent`.
 
 For `aifr_cat`, use `format="text"` with `divider="xml"` for token-efficient
 multi-file reading with `<file path="...">` wrappers.

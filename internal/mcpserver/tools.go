@@ -31,6 +31,7 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolRevParse(), s.handleRevParse)
 	s.sdkServer.AddTool(toolHexdump(), s.handleHexdump)
 	s.sdkServer.AddTool(toolSysinfo(), s.handleSysinfo)
+	s.sdkServer.AddTool(toolGetent(), s.handleGetent)
 }
 
 // ── Tool Definitions ──
@@ -507,6 +508,45 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 	}
 	resp, err := s.engine.Pathfind(args.Command, engine.PathfindParams{
 		SearchList: args.SearchList,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── getent ──
+
+func toolGetent() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "aifr_getent",
+		Description: `Query system databases (passwd, group, services, protocols) without shell pipelines. Reads /etc flat files directly. Supports key lookup by name or numeric ID. Use fields to restrict output columns.
+Passwd fields: name, uid, gid, gecos, home, shell. Group fields: name, gid, members. Services fields: name, port, protocol, aliases. Protocols fields: name, number, aliases.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"database": map[string]any{"type": "string", "enum": []string{"passwd", "group", "services", "protocols"}, "description": "System database to query"},
+				"key":      map[string]any{"type": "string", "description": "Optional: look up by name or numeric ID"},
+				"fields":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Fields to return (default: all)"},
+			},
+			"required": []string{"database"},
+		}),
+	}
+}
+
+func (s *Server) handleGetent(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Database string   `json:"database"`
+		Key      string   `json:"key"`
+		Fields   []string `json:"fields"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.Getent(engine.GetentParams{
+		Database: args.Database,
+		Key:      args.Key,
+		Fields:   args.Fields,
 	})
 	if err != nil {
 		return toolError(err.Error())
