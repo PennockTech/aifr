@@ -18,9 +18,10 @@ import (
 )
 
 var (
-	flagConfig string
-	flagFormat string
-	flagQuiet  bool
+	flagConfig   string
+	flagFormat   string
+	flagQuiet    bool
+	flagNoRedact bool
 )
 
 func main() {
@@ -64,6 +65,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagConfig, "config", "", "config file path")
 	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "json", "output format (json|text)")
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
+	rootCmd.PersistentFlags().BoolVar(&flagNoRedact, "no-redact", false, "do not redact sensitive config values")
 
 	rootCmd.Version = version.Version
 	rootCmd.AddCommand(versionCmd)

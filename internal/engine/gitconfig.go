@@ -24,6 +24,7 @@ type GitConfigParams struct {
 	List       bool   // dump all entries
 	Type       string // type coercion: "bool", "int", "path"
 	Structured string // "identity", "remotes", "branches"
+	NoRedact   bool   // if true, do not redact sensitive keys
 }
 
 // sensitiveConfigPrefixes are keys whose values are always redacted.
@@ -119,7 +120,7 @@ func (e *Engine) GitConfig(repoName string, params GitConfigParams) (*protocol.G
 	var result []protocol.GitConfigEntry
 	redacted := 0
 	for _, ent := range filtered {
-		if isSensitiveKey(ent.key) {
+		if !params.NoRedact && isSensitiveKey(ent.key) {
 			result = append(result, protocol.GitConfigEntry{
 				Key:    ent.key,
 				Value:  "<redacted>",

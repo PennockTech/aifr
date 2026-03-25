@@ -889,6 +889,7 @@ func (s *Server) handleGitConfig(_ context.Context, req *mcp.CallToolRequest) (*
 		Scope:      args.Scope,
 		Type:       args.Type,
 		Structured: args.Structured,
+		NoRedact:   s.NoRedact,
 	})
 	if err != nil {
 		return toolError(err.Error())

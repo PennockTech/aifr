@@ -54,6 +54,7 @@ Examples:
 			List:       gitconfigList,
 			Type:       gitconfigType,
 			Structured: gitconfigStructured,
+			NoRedact:   flagNoRedact,
 		}
 
 		if len(args) > 0 {

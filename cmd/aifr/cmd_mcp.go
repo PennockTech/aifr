@@ -37,6 +37,7 @@ or --transport http for multi-client setups.`,
 
 		srv := mcpserver.New(eng)
 		srv.SetReloadFunc(buildEngine)
+		srv.NoRedact = flagNoRedact
 
 		ctx, cancel := signal.NotifyContext(context.Background(),
 			os.Interrupt, syscall.SIGTERM)

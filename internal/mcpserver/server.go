@@ -26,6 +26,7 @@ type Server struct {
 	engine     *engine.Engine
 	mu         sync.RWMutex // protects engine during reload
 	reloadFunc ReloadFunc   // set by caller to enable reload
+	NoRedact   bool         // if true, do not redact sensitive config values
 }
 
 // SetReloadFunc sets the function used by aifr_self reload to rebuild the engine.
