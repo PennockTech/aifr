@@ -29,3 +29,28 @@ creates a larger attack surface than the convenience provides. An agent can tell
 the user to read the file themselves through regular tools.
 
 ---
+
+## 3. MCP Library Choice (Phase 8)
+
+**Decision:** Use the official SDK `github.com/modelcontextprotocol/go-sdk`
+(not the unofficial `github.com/mark3labs/mcp-go`).
+
+**Rationale:** The official SDK provides first-class support for both
+`StdioTransport` and `StreamableHTTPHandler`, has a cleaner API
+(`server.AddTool(def, handler)`), is actively maintained (v1.4.1), and is
+pure Go. Validated by the maintainer's own `mcp-unicode` project which uses
+the same SDK.
+
+---
+
+## 4. Continuation Token Security (Phase 3)
+
+**Decision:** HMAC-SHA256 signed tokens with per-process random key.
+
+**Rationale:** Prevents prompt injection from crafting tokens to escape
+the allow-list. Token encodes path + mtime + offset + chunk size. The
+HMAC key is 32 bytes from `crypto/rand`, generated at process startup.
+In CLI mode, tokens are scoped to a single invocation; in MCP mode, the
+key persists for the server lifetime.
+
+---
