@@ -32,6 +32,29 @@ This registers `aifr` as an MCP server using stdio transport. Claude Code
 will then have access to `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
 `aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, and `aifr_diff` tools.
 
+### Skill File
+
+The MCP server's built-in instructions are intentionally brief. For richer
+agent guidance (tool routing, advanced patterns, error handling), install the
+skill file:
+
+```sh
+# Symlink into user-level skills (recommended — stays in sync with repo)
+mkdir -p ~/.claude/skills
+ln -s "$(pwd)/skills/aifr" ~/.claude/skills/aifr
+
+# Or copy if you prefer a snapshot
+cp -r skills/aifr ~/.claude/skills/aifr
+```
+
+You can also generate the embedded (shorter) skill file at any time:
+
+```sh
+aifr skill > /tmp/aifr-skill.md
+```
+
+### HTTP Transport
+
 For HTTP transport (multi-client setups):
 
 ```sh

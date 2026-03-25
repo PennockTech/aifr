@@ -27,6 +27,7 @@ internal/
   version/          Build-time version injection via ldflags
 pkg/protocol/       Shared types (request/response structs) and error codes
 configs/            Example config file
+skills/aifr/        External skill file (users symlink into ~/.claude/skills/)
 ```
 
 ## Building and Testing
@@ -66,7 +67,7 @@ A new command (e.g., `aifr foo`) requires changes in four places:
 After adding, update:
 - `internal/mcpserver/server.go` — instructions string
 - `internal/mcpserver/skill.md` — embedded skill content (rebuild required)
-- `.claude/skills/aifr/SKILL.md` — external skill file
+- `skills/aifr/SKILL.md` — external skill file (users symlink to `~/.claude/skills/`)
 
 ## Access Control Model
 
