@@ -10,9 +10,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"go.pennock.tech/aifr/internal/config"
 	"go.pennock.tech/aifr/internal/engine"
 	"go.pennock.tech/aifr/internal/gitprovider"
 	"go.pennock.tech/aifr/internal/output"
+	"go.pennock.tech/aifr/internal/version"
 )
 
 func (s *Server) registerTools() {
@@ -34,6 +36,7 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolGetent(), s.handleGetent)
 	s.sdkServer.AddTool(toolReflog(), s.handleReflog)
 	s.sdkServer.AddTool(toolStashList(), s.handleStashList)
+	s.sdkServer.AddTool(toolSelf(), s.handleSelf)
 }
 
 // ── Tool Definitions ──
@@ -836,6 +839,74 @@ func (s *Server) handleWc(_ context.Context, req *mcp.CallToolRequest) (*mcp.Cal
 		return toolError(err.Error())
 	}
 	return toolResult(resp)
+}
+
+// ── self ──
+
+func toolSelf() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "aifr_self",
+		Description: `Introspect and manage the running aifr MCP server instance.
+Actions:
+  "version"    — return build version, commit, and date
+  "config"     — return the effective aifr configuration
+  "reload"     — hot-reload configuration from disk without restarting the server`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"action": map[string]any{
+					"type":        "string",
+					"enum":        []string{"version", "config", "reload"},
+					"description": "Action to perform",
+				},
+			},
+			"required": []string{"action"},
+		}),
+	}
+}
+
+func (s *Server) handleSelf(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Action string `json:"action"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+
+	switch args.Action {
+	case "version":
+		return toolResult(map[string]string{
+			"version":    version.Version,
+			"commit":     version.Commit,
+			"build_date": version.BuildDate,
+		})
+
+	case "config":
+		cfg, err := config.Load(config.LoadParams{})
+		if err != nil {
+			return toolError(fmt.Sprintf("loading config: %v", err))
+		}
+		return toolResult(cfg)
+
+	case "reload":
+		if s.reloadFunc == nil {
+			return toolError("reload not available: no reload function configured")
+		}
+		newEngine, err := s.reloadFunc()
+		if err != nil {
+			return toolError(fmt.Sprintf("reload failed: %v", err))
+		}
+		s.mu.Lock()
+		s.engine = newEngine
+		s.mu.Unlock()
+		return toolResult(map[string]string{
+			"status":  "ok",
+			"message": "configuration reloaded successfully",
+		})
+
+	default:
+		return toolError(fmt.Sprintf("unknown action %q (use: version, config, reload)", args.Action))
+	}
 }
 
 // ── Helpers ──

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -15,10 +16,28 @@ import (
 	"go.pennock.tech/aifr/internal/version"
 )
 
+// ReloadFunc is called by aifr_self reload to rebuild the engine from config.
+// It should return a new engine with updated config, or an error.
+type ReloadFunc func() (*engine.Engine, error)
+
 // Server wraps the MCP SDK server with aifr's engine.
 type Server struct {
-	sdkServer *mcp.Server
-	engine    *engine.Engine
+	sdkServer  *mcp.Server
+	engine     *engine.Engine
+	mu         sync.RWMutex // protects engine during reload
+	reloadFunc ReloadFunc   // set by caller to enable reload
+}
+
+// SetReloadFunc sets the function used by aifr_self reload to rebuild the engine.
+func (s *Server) SetReloadFunc(fn ReloadFunc) {
+	s.reloadFunc = fn
+}
+
+// getEngine returns the current engine (thread-safe).
+func (s *Server) getEngine() *engine.Engine {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.engine
 }
 
 // New creates a new MCP server with all aifr tools registered.
@@ -39,7 +58,8 @@ func New(eng *engine.Engine) *Server {
 				"aifr_hexdump for binary hex dumps, aifr_rev_parse to resolve git refs, " +
 				"aifr_sysinfo for system inspection (OS, date, uptime, network, routing), " +
 				"aifr_getent to query system databases (passwd, group, services, protocols), " +
-				"aifr_reflog for git reflog, and aifr_stash_list for git stash list. " +
+				"aifr_reflog for git reflog, aifr_stash_list for git stash list, " +
+				"and aifr_self to introspect/manage the running server (version, config, reload). " +
 				"For aifr_cat, use format=\"text\" with divider=\"xml\" for token-efficient output.",
 		},
 	)

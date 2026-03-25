@@ -200,7 +200,7 @@ available as MCP tools: `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
 `aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`,
 `aifr_pathfind`, `aifr_wc`, `aifr_checksum`, `aifr_hexdump`,
 `aifr_rev_parse`, `aifr_sysinfo`, `aifr_getent`, `aifr_reflog`,
-`aifr_stash_list`.
+`aifr_stash_list`, `aifr_self`.
 
 For `aifr_cat`, use `format="text"` with `divider="xml"` for token-efficient
 multi-file reading with `<file path="...">` wrappers.
