@@ -11,6 +11,10 @@ func fillOSDetails(_ *protocol.SysinfoOS) {
 	// No platform-specific OS details available.
 }
 
+func gatherUptime() *protocol.SysinfoUptime {
+	return nil
+}
+
 func gatherRouting() []protocol.SysinfoRoute {
 	return nil
 }

@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"runtime"
@@ -12,7 +13,7 @@ import (
 
 // SysinfoParams controls which sections to include.
 type SysinfoParams struct {
-	Sections []string // empty = all; options: "os", "date", "hostname", "network", "routing"
+	Sections []string // empty = all; options: "os", "date", "hostname", "uptime", "network", "routing"
 }
 
 func (p *SysinfoParams) include(section string) bool {
@@ -47,6 +48,10 @@ func (e *Engine) Sysinfo(params SysinfoParams) (*protocol.SysinfoResponse, error
 		if err == nil {
 			resp.Hostname = h
 		}
+	}
+
+	if params.include("uptime") {
+		resp.Uptime = gatherUptime()
 	}
 
 	if params.include("network") {
@@ -99,6 +104,23 @@ func gatherNetwork() []protocol.SysinfoIface {
 		result = append(result, entry)
 	}
 	return result
+}
+
+// formatUptime converts seconds to a human-readable string like "3d 14h 22m".
+func formatUptime(secs float64) string {
+	total := int(secs)
+	days := total / 86400
+	hours := (total % 86400) / 3600
+	minutes := (total % 3600) / 60
+
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	case hours > 0:
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	default:
+		return fmt.Sprintf("%dm", minutes)
+	}
 }
 
 // gatherOS returns OS information. Platform-specific parts are in

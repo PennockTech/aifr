@@ -13,6 +13,11 @@ func fillOSDetails(info *protocol.SysinfoOS) {
 	// from the common code; additional details are left empty.
 }
 
+// gatherUptime is not supported on Darwin without os/exec or x/sys/unix.
+func gatherUptime() *protocol.SysinfoUptime {
+	return nil
+}
+
 // gatherRouting is not supported on Darwin without os/exec.
 func gatherRouting() []protocol.SysinfoRoute {
 	return nil

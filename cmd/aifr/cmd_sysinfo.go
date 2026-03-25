@@ -14,10 +14,10 @@ var sysinfoSections string
 var sysinfoCmd = &cobra.Command{
 	Use:   "sysinfo",
 	Short: "System inspection for fault diagnosis",
-	Long: `Gather system information: OS, date, hostname, network interfaces,
-routing table. No files are written, no commands are executed.
+	Long: `Gather system information: OS, date, hostname, uptime, network
+interfaces, routing table. No files are written, no commands are executed.
 
-Sections: os, date, hostname, network, routing (default: all)
+Sections: os, date, hostname, uptime, network, routing (default: all)
 
 Examples:
   aifr sysinfo
@@ -49,6 +49,6 @@ Examples:
 }
 
 func init() {
-	sysinfoCmd.Flags().StringVar(&sysinfoSections, "sections", "", "comma-separated list of sections (os,date,hostname,network,routing)")
+	sysinfoCmd.Flags().StringVar(&sysinfoSections, "sections", "", "comma-separated list of sections (os,date,hostname,uptime,network,routing)")
 	rootCmd.AddCommand(sysinfoCmd)
 }

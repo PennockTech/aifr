@@ -12,6 +12,11 @@ func fillOSDetails(info *protocol.SysinfoOS) {
 	// We report runtime.GOOS/GOARCH from the common code.
 }
 
+// gatherUptime is not supported on FreeBSD without os/exec or x/sys/unix.
+func gatherUptime() *protocol.SysinfoUptime {
+	return nil
+}
+
 // gatherRouting is not supported on FreeBSD without os/exec.
 func gatherRouting() []protocol.SysinfoRoute {
 	return nil

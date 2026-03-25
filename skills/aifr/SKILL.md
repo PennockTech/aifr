@@ -122,7 +122,7 @@ aifr rev-parse HEAD~3
 ```
 aifr sysinfo
 aifr sysinfo --sections date             # just date/time
-aifr sysinfo --sections os,hostname
+aifr sysinfo --sections os,hostname,uptime
 ```
 
 ### Find commands in PATH

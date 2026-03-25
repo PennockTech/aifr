@@ -37,11 +37,18 @@ type SysinfoRoute struct {
 	Metric      int    `json:"metric,omitempty"`
 }
 
+// SysinfoUptime describes system uptime.
+type SysinfoUptime struct {
+	Seconds float64 `json:"seconds"`
+	Human   string  `json:"human"` // e.g. "3d 14h 22m"
+}
+
 // SysinfoResponse is the JSON response for a sysinfo operation.
 type SysinfoResponse struct {
 	OS       *SysinfoOS     `json:"os,omitempty"`
 	Date     *SysinfoDate   `json:"date,omitempty"`
 	Hostname string         `json:"hostname,omitempty"`
+	Uptime   *SysinfoUptime `json:"uptime,omitempty"`
 	Network  []SysinfoIface `json:"network,omitempty"`
 	Routing  []SysinfoRoute `json:"routing,omitempty"`
 	Complete bool           `json:"complete"`

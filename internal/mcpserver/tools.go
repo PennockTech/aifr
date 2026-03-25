@@ -519,13 +519,13 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 func toolSysinfo() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "aifr_sysinfo",
-		Description: `System inspection for fault diagnosis: OS info, current date/time (including year for copyrights), hostname, network interfaces, routing table. No files written, no commands executed.`,
+		Description: `System inspection for fault diagnosis: OS info, current date/time (including year for copyrights), hostname, uptime, network interfaces, routing table. No files written, no commands executed.`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"sections": map[string]any{
 					"type":        "array",
-					"items":       map[string]any{"type": "string", "enum": []string{"os", "date", "hostname", "network", "routing"}},
+					"items":       map[string]any{"type": "string", "enum": []string{"os", "date", "hostname", "uptime", "network", "routing"}},
 					"description": "Sections to include (default: all)",
 				},
 			},

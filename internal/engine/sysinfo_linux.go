@@ -56,6 +56,26 @@ func unix83ToString(b []int8) string {
 	return string(buf)
 }
 
+// gatherUptime reads /proc/uptime on Linux.
+func gatherUptime() *protocol.SysinfoUptime {
+	data, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return nil
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 1 {
+		return nil
+	}
+	secs, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return nil
+	}
+	return &protocol.SysinfoUptime{
+		Seconds: secs,
+		Human:   formatUptime(secs),
+	}
+}
+
 // gatherRouting parses /proc/net/route on Linux.
 func gatherRouting() []protocol.SysinfoRoute {
 	f, err := os.Open("/proc/net/route")
