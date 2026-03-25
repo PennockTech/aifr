@@ -386,7 +386,7 @@ func computeByteDiff(a, b string) (identical bool, bd *protocol.ByteDiff) {
 
 	line := 1
 	col := 1
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if dataA[i] != dataB[i] {
 			return false, &protocol.ByteDiff{
 				Offset: int64(i),

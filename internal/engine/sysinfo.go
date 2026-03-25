@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 
 	"go.pennock.tech/aifr/pkg/protocol"
@@ -20,12 +21,7 @@ func (p *SysinfoParams) include(section string) bool {
 	if len(p.Sections) == 0 {
 		return true
 	}
-	for _, s := range p.Sections {
-		if s == section {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.Sections, section)
 }
 
 // Sysinfo gathers system information for fault diagnosis.

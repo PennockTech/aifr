@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"go.pennock.tech/aifr/pkg/protocol"
@@ -194,13 +195,7 @@ func parseColonFile(path string, mapper fieldMapper, key string) ([]protocol.Get
 		}
 
 		if key != "" {
-			matched := false
-			for _, k := range keys {
-				if k == key {
-					matched = true
-					break
-				}
-			}
+			matched := slices.Contains(keys, key)
 			if !matched {
 				continue
 			}
@@ -268,13 +263,7 @@ func parseServicesFile(path, key, protoFilter string) ([]protocol.GetentEntry, e
 
 		if key != "" && name != key && port != key {
 			// Also check aliases.
-			matched := false
-			for _, a := range parts[2:] {
-				if a == key {
-					matched = true
-					break
-				}
-			}
+			matched := slices.Contains(parts[2:], key)
 			if !matched {
 				continue
 			}
@@ -329,13 +318,7 @@ func parseProtocolsFile(path, key string) ([]protocol.GetentEntry, error) {
 		}
 
 		if key != "" && name != key && number != key {
-			matched := false
-			for _, a := range parts[2:] {
-				if a == key {
-					matched = true
-					break
-				}
-			}
+			matched := slices.Contains(parts[2:], key)
 			if !matched {
 				continue
 			}

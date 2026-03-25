@@ -186,10 +186,7 @@ func (e *Engine) searchFile(root, path string, re *regexp.Regexp, params SearchP
 
 		// Context lines.
 		if params.Context > 0 {
-			startCtx := lineIdx - params.Context
-			if startCtx < 0 {
-				startCtx = 0
-			}
+			startCtx := max(lineIdx-params.Context, 0)
 			endCtx := lineIdx + params.Context
 			if endCtx >= len(allLines) {
 				endCtx = len(allLines) - 1

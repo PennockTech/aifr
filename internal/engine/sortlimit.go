@@ -95,7 +95,7 @@ func compareVersions(a, b string) int {
 
 	n := min(len(segsA), len(segsB))
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		sa, sb := segsA[i], segsB[i]
 		// Try numeric comparison first.
 		na, errA := strconv.ParseInt(sa, 10, 64)

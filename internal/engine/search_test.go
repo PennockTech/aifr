@@ -4,6 +4,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -81,11 +82,11 @@ func TestSearchWithContext(t *testing.T) {
 func TestSearchMaxMatches(t *testing.T) {
 	dir := t.TempDir()
 	// Create a file with many matches.
-	content := ""
-	for i := 0; i < 100; i++ {
-		content += "match\n"
+	var content strings.Builder
+	for range 100 {
+		content.WriteString("match\n")
 	}
-	mkTestFile(t, dir, "many.txt", content)
+	mkTestFile(t, dir, "many.txt", content.String())
 	eng := newTestEngine(t, dir)
 
 	resp, err := eng.Search("match", dir, SearchParams{MaxMatches: 5})
