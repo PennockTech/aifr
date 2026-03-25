@@ -26,6 +26,11 @@ func TestParseGitPath(t *testing.T) {
 		{"myrepo:main:src/lib.rs", "myrepo", "main", "src/lib.rs", false},
 		{"myrepo:HEAD:", "myrepo", "HEAD", "", false}, // empty path = repo root
 
+		// Absolute filesystem path as repo (three-part format)
+		{"/home/user/repo:HEAD:README.md", "/home/user/repo", "HEAD", "README.md", false},
+		{"/home/user/repo:main:src/lib.go", "/home/user/repo", "main", "src/lib.go", false},
+		{"/home/user/repo:v2.0:", "/home/user/repo", "v2.0", "", false}, // repo root
+
 		// Errors
 		{"no-colon", "", "", "", true},
 		{":path", "", "", "", true},      // empty ref
@@ -66,7 +71,10 @@ func TestIsGitPath(t *testing.T) {
 		{"main:src/handler.go", true},
 		{"HEAD:README.md", true},
 		{"repo:ref:path", true},
-		{"/absolute/path", false},
+		{"/absolute/path", false},         // no colon — not git path
+		{"/path/with:colon", false},       // absolute with 1 colon — ambiguous, not git path
+		{"/path/to/repo:HEAD:file", true}, // absolute with 2 colons — git path
+		{"/repo:ref:path:extra", true},    // absolute with 3+ colons — git path
 		{"relative/path", false},
 		{"no-colon", false},
 		{"", false},

@@ -35,10 +35,11 @@ func toolRead() *mcp.Tool {
 		Description: `Read file contents with optional chunking. Supports filesystem paths and git refs.
 
 Path syntax:
-  /absolute/path          → filesystem file
-  relative/path           → relative to allowed roots
-  branch:path             → git tree (auto-detected repo)
-  reponame:ref:path       → named git repo at ref
+  /absolute/path              → filesystem file
+  relative/path               → relative to allowed roots
+  branch:path                 → git tree (auto-detected repo from cwd)
+  reponame:ref:path           → named git repo at ref
+  /path/to/dir:ref:path       → git repo found at/above dir, at ref
 
 Chunking (mutually exclusive):
   lines: "1:50"           → lines 1-50 (1-indexed, inclusive)
@@ -139,7 +140,7 @@ func toolRefs() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"repo":     map[string]any{"type": "string", "description": "Named repo (empty = auto-detect)"},
+				"repo":     map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
 				"branches": map[string]any{"type": "boolean", "description": "Show branches"},
 				"tags":     map[string]any{"type": "boolean", "description": "Show tags"},
 				"remotes":  map[string]any{"type": "boolean", "description": "Show remote refs"},
@@ -155,7 +156,7 @@ func toolLog() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"repo":      map[string]any{"type": "string", "description": "Named repo (empty = auto-detect)"},
+				"repo":      map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
 				"ref":       map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
 				"max_count": map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
 			},

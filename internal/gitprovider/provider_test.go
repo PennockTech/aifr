@@ -302,11 +302,95 @@ func TestOpenRepoNamed(t *testing.T) {
 	}
 }
 
+func TestOpenRepoByPath(t *testing.T) {
+	dir, _ := initTestRepo(t)
+	p := NewProvider(nil)
+
+	repo, repoPath, err := p.OpenRepo(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("repo is nil")
+	}
+	if repoPath != dir {
+		t.Errorf("repoPath = %q, want %q", repoPath, dir)
+	}
+}
+
+func TestOpenRepoBySubdirPath(t *testing.T) {
+	dir, _ := initTestRepo(t)
+	p := NewProvider(nil)
+
+	// Opening from a subdirectory should find the repo root.
+	subdir := filepath.Join(dir, "src")
+	repo, repoPath, err := p.OpenRepo(subdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("repo is nil")
+	}
+	if repoPath != dir {
+		t.Errorf("repoPath = %q, want %q", repoPath, dir)
+	}
+}
+
+func TestOpenRepoNamedTakesPriority(t *testing.T) {
+	dir, _ := initTestRepo(t)
+	// Name a repo with the same name as a directory that exists.
+	// Named repos should take priority.
+	p := NewProvider(map[string]string{"test": dir})
+
+	repo, repoPath, err := p.OpenRepo("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("repo is nil")
+	}
+	if repoPath != dir {
+		t.Errorf("repoPath = %q, want %q", repoPath, dir)
+	}
+}
+
 func TestOpenRepoUnknownName(t *testing.T) {
 	p := NewProvider(nil)
 	_, _, err := p.OpenRepo("nonexistent")
 	if err == nil {
 		t.Error("expected error for unknown repo name")
+	}
+}
+
+func TestOpenRepoPathNoGit(t *testing.T) {
+	dir := t.TempDir() // no .git
+	p := NewProvider(nil)
+	_, _, err := p.OpenRepo(dir)
+	if err == nil {
+		t.Error("expected error for path with no git repo")
+	}
+}
+
+func TestLooksLikePath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"/home/user/repo", true},
+		{"./repo", true},
+		{"../repo", true},
+		{".", true},
+		{"..", true},
+		{"myrepo", false},
+		{"infra", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := LooksLikePath(tt.input); got != tt.want {
+				t.Errorf("LooksLikePath(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 

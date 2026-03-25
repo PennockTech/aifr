@@ -6,11 +6,29 @@ import (
 	"os"
 	"strings"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"go.pennock.tech/aifr/internal/gitprovider"
 	"go.pennock.tech/aifr/pkg/protocol"
 )
+
+// openGitRepo opens a git repository and checks access control for
+// filesystem-path repos. Named repos and CWD auto-detect skip the
+// access check since they are admin-configured or implicitly allowed.
+func (e *Engine) openGitRepo(repoIdentifier string) (*git.Repository, string, error) {
+	repo, repoPath, err := e.gitProvider.OpenRepo(repoIdentifier)
+	if err != nil {
+		return nil, "", err
+	}
+	// For filesystem-path repos, verify the repo root is accessible.
+	if gitprovider.LooksLikePath(repoIdentifier) {
+		if err := e.checker.Check(repoPath); err != nil {
+			return nil, "", err
+		}
+	}
+	return repo, repoPath, nil
+}
 
 // GitStat returns metadata for a file in a git tree.
 func (e *Engine) GitStat(gitPath string) (*protocol.StatEntry, error) {
@@ -19,7 +37,7 @@ func (e *Engine) GitStat(gitPath string) (*protocol.StatEntry, error) {
 		return nil, err
 	}
 
-	repo, _, err := e.gitProvider.OpenRepo(gp.Repo)
+	repo, _, err := e.openGitRepo(gp.Repo)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +94,7 @@ func (e *Engine) GitRead(gitPath string, params ReadParams) (*protocol.ReadRespo
 		return nil, err
 	}
 
-	repo, _, err := e.gitProvider.OpenRepo(gp.Repo)
+	repo, _, err := e.openGitRepo(gp.Repo)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +182,7 @@ func (e *Engine) GitList(gitPath string) (*protocol.ListResponse, error) {
 		return nil, err
 	}
 
-	repo, _, err := e.gitProvider.OpenRepo(gp.Repo)
+	repo, _, err := e.openGitRepo(gp.Repo)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +208,7 @@ func (e *Engine) GitList(gitPath string) (*protocol.ListResponse, error) {
 
 // Refs lists git refs for a repository.
 func (e *Engine) Refs(repoName string, branches, tags, remotes bool) (*protocol.RefsResponse, error) {
-	repo, _, err := e.gitProvider.OpenRepo(repoName)
+	repo, _, err := e.openGitRepo(repoName)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +270,7 @@ func (e *Engine) Refs(repoName string, branches, tags, remotes bool) (*protocol.
 
 // Log returns git commit log entries.
 func (e *Engine) Log(repoName, ref string, maxCount int) (*protocol.LogResponse, error) {
-	repo, _, err := e.gitProvider.OpenRepo(repoName)
+	repo, _, err := e.openGitRepo(repoName)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +368,7 @@ func (e *Engine) readContentForDiff(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		repo, _, err := e.gitProvider.OpenRepo(gp.Repo)
+		repo, _, err := e.openGitRepo(gp.Repo)
 		if err != nil {
 			return "", err
 		}

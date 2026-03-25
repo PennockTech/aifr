@@ -28,14 +28,20 @@ func NewProvider(namedRepos map[string]string) *Provider {
 	return &Provider{namedRepos: repos}
 }
 
-// OpenRepo opens a git repository by name or by walking up from cwd.
+// OpenRepo opens a git repository by name, filesystem path, or by walking up from cwd.
+//
+// When name is empty, auto-detects by walking up from the current directory.
+// When name matches a configured named repo, opens that.
+// When name looks like a filesystem path (starts with /, ./, or ../),
+// walks up from that path to find a git repository.
+// Otherwise, returns an error for unknown repo name.
 func (p *Provider) OpenRepo(name string) (*git.Repository, string, error) {
-	if name != "" {
-		repoPath, ok := p.namedRepos[name]
-		if !ok {
-			return nil, "", protocol.NewError(protocol.ErrInvalidRef,
-				fmt.Sprintf("unknown git repo name %q", name))
-		}
+	if name == "" {
+		return p.openRepoFromWalk("", "current directory or parents")
+	}
+
+	// Try named repo first.
+	if repoPath, ok := p.namedRepos[name]; ok {
 		repo, err := git.PlainOpen(repoPath)
 		if err != nil {
 			return nil, "", protocol.NewError(protocol.ErrInvalidRef,
@@ -44,13 +50,42 @@ func (p *Provider) OpenRepo(name string) (*git.Repository, string, error) {
 		return repo, repoPath, nil
 	}
 
-	// Auto-detect by walking up from cwd.
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, "", fmt.Errorf("getting cwd: %w", err)
+	// If it looks like a filesystem path, walk up to find a repo.
+	if LooksLikePath(name) {
+		return p.openRepoFromWalk(name, name)
 	}
 
-	dir := cwd
+	return nil, "", protocol.NewError(protocol.ErrInvalidRef,
+		fmt.Sprintf("unknown git repo name %q", name))
+}
+
+// LooksLikePath returns true if name appears to be a filesystem path
+// rather than a short repo name.
+func LooksLikePath(name string) bool {
+	return strings.HasPrefix(name, "/") ||
+		strings.HasPrefix(name, "./") ||
+		strings.HasPrefix(name, "../") ||
+		name == "." || name == ".."
+}
+
+// openRepoFromWalk walks up from startDir (or cwd if empty) to find a git repo.
+func (p *Provider) openRepoFromWalk(startDir, desc string) (*git.Repository, string, error) {
+	var dir string
+	if startDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, "", fmt.Errorf("getting cwd: %w", err)
+		}
+		dir = cwd
+	} else {
+		abs, err := filepath.Abs(startDir)
+		if err != nil {
+			return nil, "", protocol.NewError(protocol.ErrInvalidRef,
+				fmt.Sprintf("cannot resolve path %q: %v", startDir, err))
+		}
+		dir = abs
+	}
+
 	for {
 		repo, err := git.PlainOpen(dir)
 		if err == nil {
@@ -64,7 +99,7 @@ func (p *Provider) OpenRepo(name string) (*git.Repository, string, error) {
 	}
 
 	return nil, "", protocol.NewError(protocol.ErrInvalidRef,
-		"no git repository found in current directory or parents")
+		fmt.Sprintf("no git repository found at or above %s", desc))
 }
 
 // ResolveRef resolves a ref string to a commit hash.

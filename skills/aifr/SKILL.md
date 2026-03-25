@@ -50,16 +50,22 @@ returns structured JSON.
 All tools that accept a `path` parameter also accept git paths:
 
 ```
-HEAD:README.md                auto-detected repo, HEAD
-main:src/lib.go               branch "main"
-v2.0:config.toml              tag "v2.0"
-HEAD~3:file.go                3 commits back
-myrepo:main:terraform/main.tf named repo from config
+HEAD:README.md                    auto-detected repo, HEAD
+main:src/lib.go                   branch "main"
+v2.0:config.toml                  tag "v2.0"
+HEAD~3:file.go                    3 commits back
+myrepo:main:terraform/main.tf     named repo from config
+/path/to/repo:HEAD:README.md      repo at filesystem path
+/path/to/repo:main:src/lib.go     filesystem path + branch
 ```
 
 Paths starting with `/` or not containing `:` are treated as filesystem
 paths. Paths containing `:` with something before it are treated as git
-paths.
+paths. Absolute filesystem paths require the three-part format
+(`/path:ref:file`) to avoid ambiguity.
+
+For `aifr_refs` and `aifr_log`, the `repo` parameter also accepts
+filesystem paths (e.g., `repo: "/path/to/project"`).
 
 
 ## aifr_cat: multi-file reading

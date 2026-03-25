@@ -72,15 +72,19 @@ func ParseGitPath(s string) (*GitPath, error) {
 // that is likely a ref:path separator, not just part of a normal path).
 func IsGitPath(s string) bool {
 	// A git path must contain at least one colon.
-	// We exclude paths that start with / (absolute filesystem paths can't be git paths).
 	// We also exclude paths that look like they could be Windows drive letters (C:).
-	if strings.HasPrefix(s, "/") {
-		return false
-	}
 	idx := strings.IndexByte(s, ':')
 	if idx < 0 {
 		return false
 	}
 	// Must have something before the colon (the ref or repo name).
-	return idx > 0
+	if idx == 0 {
+		return false
+	}
+	// Absolute filesystem paths require the three-part format (path:ref:file)
+	// to avoid ambiguity with filesystem paths that happen to contain a colon.
+	if strings.HasPrefix(s, "/") {
+		return strings.Count(s, ":") >= 2
+	}
+	return true
 }

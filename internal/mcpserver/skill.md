@@ -68,8 +68,10 @@ aifr find --newer-than 24h <path>
 ```
 aifr refs
 aifr refs --branches --tags
+aifr refs /path/to/repo
 aifr log --max-count 10
 aifr log HEAD
+aifr log /path/to/repo:main
 ```
 
 ### Compare files
@@ -94,6 +96,7 @@ Git objects are addressed as `[repo:]<ref>:<path>`:
 - `v2.0:config.toml` — tag v2.0
 - `HEAD~3:file.go` — 3 commits back
 - `myrepo:main:src/` — named repo "myrepo" at branch main
+- `/path/to/repo:HEAD:README.md` — repo at filesystem path
 
 ## Chunked Reading
 

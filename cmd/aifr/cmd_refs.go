@@ -12,7 +12,7 @@ var (
 )
 
 var refsCmd = &cobra.Command{
-	Use:   "refs [repo]",
+	Use:   "refs [repo|path]",
 	Short: "List git refs (branches, tags, remotes)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -12,7 +12,7 @@ var (
 )
 
 var logCmd = &cobra.Command{
-	Use:   "log [repo][:<ref>]",
+	Use:   "log [repo|path][:<ref>]",
 	Short: "Git commit log",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -26,8 +26,17 @@ var logCmd = &cobra.Command{
 		ref := ""
 		if len(args) > 0 {
 			arg := args[0]
-			// Parse repo:ref or just ref.
-			if before, after, ok := strings.Cut(arg, ":"); ok {
+			// Filesystem paths (absolute or relative) are repo identifiers,
+			// with an optional :ref suffix.
+			if strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../") || arg == "." || arg == ".." {
+				if before, after, ok := strings.Cut(arg, ":"); ok {
+					repoName = before
+					ref = after
+				} else {
+					repoName = arg
+				}
+			} else if before, after, ok := strings.Cut(arg, ":"); ok {
+				// Parse repo:ref or just ref.
 				repoName = before
 				ref = after
 			} else {
