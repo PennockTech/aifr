@@ -37,6 +37,7 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolReflog(), s.handleReflog)
 	s.sdkServer.AddTool(toolStashList(), s.handleStashList)
 	s.sdkServer.AddTool(toolSelf(), s.handleSelf)
+	s.sdkServer.AddTool(toolGitConfig(), s.handleGitConfig)
 }
 
 // ── Tool Definitions ──
@@ -834,6 +835,60 @@ func (s *Server) handleWc(_ context.Context, req *mcp.CallToolRequest) (*mcp.Cal
 		Bytes:     args.Bytes,
 		Chars:     args.Chars,
 		TotalOnly: args.TotalOnly,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── git-config ──
+
+func toolGitConfig() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "aifr_git_config",
+		Description: `Query git configuration. Default scope is local (.git/config).
+Use scope="merged" for full cascade with include resolution (supports gitdir: conditional includes).
+Structured queries: "identity" (defaults to merged scope), "remotes", "branches".
+Credential-related keys are always redacted.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"key":        map[string]any{"type": "string", "description": "Single key lookup (e.g., remote.origin.url)"},
+				"regexp":     map[string]any{"type": "string", "description": "Match keys by regexp"},
+				"section":    map[string]any{"type": "string", "description": "List entries in section (e.g., remote.origin)"},
+				"list":       map[string]any{"type": "boolean", "description": "Dump all config entries"},
+				"scope":      map[string]any{"type": "string", "description": "Config scope: local (default), merged, global, system"},
+				"type":       map[string]any{"type": "string", "description": "Type coercion: bool, int, path"},
+				"structured": map[string]any{"type": "string", "description": "Structured query: identity, remotes, branches"},
+				"repo":       map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
+			},
+		}),
+	}
+}
+
+func (s *Server) handleGitConfig(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Key        string `json:"key"`
+		Regexp     string `json:"regexp"`
+		Section    string `json:"section"`
+		List       bool   `json:"list"`
+		Scope      string `json:"scope"`
+		Type       string `json:"type"`
+		Structured string `json:"structured"`
+		Repo       string `json:"repo"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.GitConfig(args.Repo, engine.GitConfigParams{
+		Key:        args.Key,
+		Regexp:     args.Regexp,
+		Section:    args.Section,
+		List:       args.List,
+		Scope:      args.Scope,
+		Type:       args.Type,
+		Structured: args.Structured,
 	})
 	if err != nil {
 		return toolError(err.Error())

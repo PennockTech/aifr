@@ -139,6 +139,18 @@ aifr sysinfo --sections date             # just date/time
 aifr sysinfo --sections os,hostname,uptime
 ```
 
+### Git config
+```
+aifr git-config remote.origin.url             # local key lookup
+aifr git-config --scope merged user.email     # merged with includes
+aifr git-config --identity                    # structured identity (merged)
+aifr git-config --remotes                     # structured remotes
+aifr git-config --branches                    # structured branches
+aifr git-config --regexp 'branch\..*\.remote' # pattern match
+aifr git-config --section remote.origin       # section listing
+aifr git-config --list --scope local          # dump local config
+```
+
 ### Query system databases
 ```
 aifr getent passwd                           # all users
@@ -200,7 +212,7 @@ available as MCP tools: `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
 `aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`,
 `aifr_pathfind`, `aifr_wc`, `aifr_checksum`, `aifr_hexdump`,
 `aifr_rev_parse`, `aifr_sysinfo`, `aifr_getent`, `aifr_reflog`,
-`aifr_stash_list`, `aifr_self`.
+`aifr_stash_list`, `aifr_self`, `aifr_git_config`.
 
 For `aifr_cat`, use `format="text"` with `divider="xml"` for token-efficient
 multi-file reading with `<file path="...">` wrappers.

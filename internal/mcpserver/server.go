@@ -59,7 +59,8 @@ func New(eng *engine.Engine) *Server {
 				"aifr_sysinfo for system inspection (OS, date, uptime, network, routing), " +
 				"aifr_getent to query system databases (passwd, group, services, protocols), " +
 				"aifr_reflog for git reflog, aifr_stash_list for git stash list, " +
-				"and aifr_self to introspect/manage the running server (version, config, reload). " +
+				"aifr_self to introspect/manage the running server (version, config, reload), " +
+				"and aifr_git_config to query git configuration (local default, merged with gitdir: includes). " +
 				"For aifr_cat, use format=\"text\" with divider=\"xml\" for token-efficient output.",
 		},
 	)
