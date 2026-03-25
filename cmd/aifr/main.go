@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	flagConfig   string
-	flagFormat   string
-	flagQuiet    bool
-	flagNoRedact bool
+	flagConfig       string
+	flagFormat       string
+	flagQuiet        bool
+	flagNoRedact     bool
+	flagVersionShort bool
 )
 
 func main() {
@@ -50,7 +51,10 @@ var versionCmd = &cobra.Command{
 			"commit":     version.Commit,
 			"build_date": version.BuildDate,
 		}
-		if flagFormat == "text" {
+		if flagFormat == "short" || flagVersionShort {
+			fmt.Println(version.Version)
+			return
+		} else if flagFormat == "text" {
 			fmt.Printf("aifr %s (commit %s, built %s)\n",
 				version.Version, version.Commit, version.BuildDate)
 			return
@@ -66,6 +70,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "json", "output format (json|text)")
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoRedact, "no-redact", false, "do not redact sensitive config values")
+
+	versionCmd.Flags().BoolVarP(&flagVersionShort, "short", "s", false, "just the version")
 
 	rootCmd.Version = version.Version
 	rootCmd.AddCommand(versionCmd)
