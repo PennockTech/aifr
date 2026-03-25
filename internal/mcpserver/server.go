@@ -30,10 +30,11 @@ func New(eng *engine.Engine) *Server {
 		},
 		&mcp.ServerOptions{
 			Instructions: "aifr is a read-only filesystem and git-tree access tool. " +
-				"Use aifr_read to read files, aifr_search to search content, " +
-				"aifr_list to list directories, aifr_find to find files, " +
-				"aifr_stat for metadata, aifr_refs for git refs, " +
-				"aifr_log for git history, and aifr_diff to compare files.",
+				"Use aifr_read to read files, aifr_cat to read multiple files with dividers, " +
+				"aifr_search to search content, aifr_list to list directories, " +
+				"aifr_find to find files, aifr_stat for metadata, aifr_refs for git refs, " +
+				"aifr_log for git history, and aifr_diff to compare files. " +
+				"For aifr_cat, use format=\"text\" with divider=\"xml\" for token-efficient output.",
 		},
 	)
 

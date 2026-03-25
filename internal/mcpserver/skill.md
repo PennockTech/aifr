@@ -26,6 +26,15 @@ aifr read HEAD:src/main.go
 aifr read myrepo:v2.0:config.toml
 ```
 
+### Concatenate multiple files
+```
+aifr cat file1.go file2.go file3.go
+aifr cat --format text --divider xml file1.go file2.go
+aifr cat --name '*.go' --exclude-path '**/vendor/**' ./src/
+aifr cat --name '*.go' --lines 10 --divider plain --format text .
+aifr cat --name '*.yaml' --max-depth 2 ./config/
+```
+
 ### Get file/directory metadata
 ```
 aifr stat <path>
@@ -108,5 +117,8 @@ All commands output JSON by default. Use `--format text` for human-readable outp
 ## MCP Server
 
 `aifr mcp` starts the MCP server (stdio by default). The same operations are
-available as MCP tools: `aifr_read`, `aifr_stat`, `aifr_list`, `aifr_search`,
-`aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`.
+available as MCP tools: `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
+`aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`.
+
+For `aifr_cat`, use `format="text"` with `divider="xml"` for token-efficient
+multi-file reading with `<file path="...">` wrappers.

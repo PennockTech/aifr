@@ -40,3 +40,74 @@ func WriteErrorText(w io.Writer, err *protocol.AifrError) {
 	}
 	fmt.Fprintln(w)
 }
+
+// WriteCatText writes a cat response with the specified divider format.
+// Divider is one of "plain", "xml", or "none".
+func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
+	for _, entry := range resp.Files {
+		displayPath := entry.RelPath
+		if displayPath == "" {
+			displayPath = entry.Path
+		}
+
+		switch divider {
+		case "xml":
+			writeCatXML(w, entry, displayPath)
+		case "none":
+			writeCatNone(w, entry)
+		default: // "plain"
+			writeCatPlain(w, entry, displayPath)
+		}
+	}
+
+	if resp.Truncated {
+		switch divider {
+		case "xml":
+			fmt.Fprintf(w, "<truncated files_shown=\"%d\" total_bytes=\"%d\" warning=%q />\n",
+				len(resp.Files), resp.TotalBytes, resp.Warning)
+		case "none":
+			// no summary in none mode
+		default:
+			fmt.Fprintf(w, "--- truncated: %d files shown, %d bytes, %s ---\n",
+				len(resp.Files), resp.TotalBytes, resp.Warning)
+		}
+	}
+}
+
+func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string) {
+	switch {
+	case entry.Error != "":
+		fmt.Fprintf(w, "--- %s (error: %s) ---\n", path, entry.Error)
+	case entry.Binary:
+		fmt.Fprintf(w, "--- %s (binary, skipped) ---\n", path)
+	default:
+		fmt.Fprintf(w, "--- %s ---\n", path)
+		io.WriteString(w, entry.Content) //nolint:errcheck
+		if len(entry.Content) > 0 && entry.Content[len(entry.Content)-1] != '\n' {
+			io.WriteString(w, "\n") //nolint:errcheck
+		}
+	}
+}
+
+func writeCatXML(w io.Writer, entry protocol.CatEntry, path string) {
+	switch {
+	case entry.Error != "":
+		fmt.Fprintf(w, "<file path=%q error=%q />\n", path, entry.Error)
+	case entry.Binary:
+		fmt.Fprintf(w, "<file path=%q binary=\"true\" />\n", path)
+	default:
+		fmt.Fprintf(w, "<file path=%q>\n", path)
+		io.WriteString(w, entry.Content) //nolint:errcheck
+		if len(entry.Content) > 0 && entry.Content[len(entry.Content)-1] != '\n' {
+			io.WriteString(w, "\n") //nolint:errcheck
+		}
+		fmt.Fprintln(w, "</file>")
+	}
+}
+
+func writeCatNone(w io.Writer, entry protocol.CatEntry) {
+	if entry.Error != "" || entry.Binary {
+		return // skip silently in none mode
+	}
+	io.WriteString(w, entry.Content) //nolint:errcheck
+}

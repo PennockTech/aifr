@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"go.pennock.tech/aifr/internal/engine"
 	"go.pennock.tech/aifr/internal/gitprovider"
+	"go.pennock.tech/aifr/internal/output"
 )
 
 func (s *Server) registerTools() {
@@ -22,6 +24,7 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolRefs(), s.handleRefs)
 	s.sdkServer.AddTool(toolLog(), s.handleLog)
 	s.sdkServer.AddTool(toolDiff(), s.handleDiff)
+	s.sdkServer.AddTool(toolCat(), s.handleCat)
 }
 
 // ── Tool Definitions ──
@@ -378,6 +381,83 @@ func (s *Server) handleDiff(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err != nil {
 		return toolError(err.Error())
 	}
+	return toolResult(resp)
+}
+
+func toolCat() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "aifr_cat",
+		Description: `Concatenate contents of multiple files with dividers. Two modes:
+1. Explicit paths: provide a list of file paths in "paths"
+2. Discovery: provide "root" directory with "name"/"exclude_path" filters
+
+Tip: Use format="text" with divider="xml" for token-efficient multi-file
+reading. Each file is wrapped in <file path="...">content</file> tags.
+
+Binary files are skipped. Each file is access-controlled individually.
+Use "lines" to limit output to first N lines per file (head mode).`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"paths":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Explicit file paths to concatenate"},
+				"root":           map[string]any{"type": "string", "description": "Root directory for discovery mode"},
+				"name":           map[string]any{"type": "string", "description": "Glob on filename (discovery mode)"},
+				"exclude_path":   map[string]any{"type": "string", "description": "Doublestar glob on relative path to exclude"},
+				"max_depth":      map[string]any{"type": "integer", "description": "Max recursion depth for discovery (-1=unlimited)", "default": -1},
+				"lines":          map[string]any{"type": "integer", "description": "Max lines per file (0=all)", "default": 0},
+				"divider":        map[string]any{"type": "string", "enum": []string{"xml", "plain", "none"}, "description": "Divider format for text output (default: xml)", "default": "xml"},
+				"format":         map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
+				"max_total_size": map[string]any{"type": "integer", "description": "Max total output bytes (default: 2MiB)"},
+				"max_files":      map[string]any{"type": "integer", "description": "Max files to read (default: 1000)"},
+			},
+		}),
+	}
+}
+
+func (s *Server) handleCat(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Paths        []string `json:"paths"`
+		Root         string   `json:"root"`
+		Name         string   `json:"name"`
+		ExcludePath  string   `json:"exclude_path"`
+		MaxDepth     int      `json:"max_depth"`
+		Lines        int      `json:"lines"`
+		Divider      string   `json:"divider"`
+		Format       string   `json:"format"`
+		MaxTotalSize int64    `json:"max_total_size"`
+		MaxFiles     int      `json:"max_files"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+
+	params := engine.CatParams{
+		Name:         args.Name,
+		ExcludePath:  args.ExcludePath,
+		MaxDepth:     args.MaxDepth,
+		Lines:        args.Lines,
+		MaxTotalSize: args.MaxTotalSize,
+		MaxFiles:     args.MaxFiles,
+	}
+
+	resp, err := s.engine.Cat(args.Paths, args.Root, params)
+	if err != nil {
+		return toolError(err.Error())
+	}
+
+	// If text format requested, format with divider and return as text.
+	if args.Format == "text" {
+		divider := args.Divider
+		if divider == "" {
+			divider = "xml"
+		}
+		var buf strings.Builder
+		output.WriteCatText(&buf, resp, divider)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	}
+
 	return toolResult(resp)
 }
 
