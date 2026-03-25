@@ -84,6 +84,7 @@ func (e *Engine) checkAccess(path string) (string, error) {
 type continuationToken struct {
 	Path      string `json:"p"`
 	ModTime   int64  `json:"m"` // Unix nanos
+	Size      int64  `json:"z"` // file size at token creation
 	Offset    int64  `json:"o"` // byte offset of next chunk
 	ChunkSize int    `json:"s"` // chunk size hint
 }

@@ -213,6 +213,7 @@ func (e *Engine) readBytes(path string, info os.FileInfo, resp *protocol.ReadRes
 		tok, err := e.encodeContinuation(&continuationToken{
 			Path:      path,
 			ModTime:   info.ModTime().UnixNano(),
+			Size:      info.Size(),
 			Offset:    resp.Chunk.EndByte + 1,
 			ChunkSize: int(size),
 		})
@@ -297,6 +298,7 @@ func (e *Engine) readDefault(path string, info os.FileInfo, resp *protocol.ReadR
 	tok, err := e.encodeContinuation(&continuationToken{
 		Path:      path,
 		ModTime:   info.ModTime().UnixNano(),
+		Size:      info.Size(),
 		Offset:    int64(len(buf)),
 		ChunkSize: DefaultChunkSize,
 	})
@@ -321,7 +323,7 @@ func (e *Engine) readContinuation(token string) (*protocol.ReadResponse, error) 
 		return nil, protocol.NewPathError(protocol.ErrStaleContinuation, tok.Path, "file no longer exists")
 	}
 
-	if info.ModTime().UnixNano() != tok.ModTime {
+	if info.ModTime().UnixNano() != tok.ModTime || info.Size() != tok.Size {
 		return nil, protocol.NewPathError(protocol.ErrStaleContinuation, tok.Path,
 			"file has been modified since continuation token was issued")
 	}
