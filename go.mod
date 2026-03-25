@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-git/go-git/v5 v5.17.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/pelletier/go-toml/v2 v2.3.0
