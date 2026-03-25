@@ -528,6 +528,7 @@ Passwd fields: name, uid, gid, gecos, home, shell. Group fields: name, gid, memb
 				"database": map[string]any{"type": "string", "enum": []string{"passwd", "group", "services", "protocols"}, "description": "System database to query"},
 				"key":      map[string]any{"type": "string", "description": "Optional: look up by name or numeric ID"},
 				"fields":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Fields to return (default: all)"},
+				"protocol": map[string]any{"type": "string", "description": "For services database: filter by protocol (tcp, udp)"},
 			},
 			"required": []string{"database"},
 		}),
@@ -539,6 +540,7 @@ func (s *Server) handleGetent(_ context.Context, req *mcp.CallToolRequest) (*mcp
 		Database string   `json:"database"`
 		Key      string   `json:"key"`
 		Fields   []string `json:"fields"`
+		Protocol string   `json:"protocol"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -547,6 +549,7 @@ func (s *Server) handleGetent(_ context.Context, req *mcp.CallToolRequest) (*mcp
 		Database: args.Database,
 		Key:      args.Key,
 		Fields:   args.Fields,
+		Protocol: args.Protocol,
 	})
 	if err != nil {
 		return toolError(err.Error())

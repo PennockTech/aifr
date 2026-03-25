@@ -15,6 +15,7 @@ type GetentParams struct {
 	Database string   // "passwd", "group", "services", "protocols"
 	Key      string   // optional: lookup by name or numeric ID
 	Fields   []string // optional: restrict to these fields (default: all)
+	Protocol string   // optional: for services database, filter by protocol (tcp, udp, etc.)
 }
 
 // databaseSpec describes how to parse a system database file.
@@ -103,7 +104,7 @@ func (e *Engine) Getent(params GetentParams) (*protocol.GetentResponse, error) {
 	case "group":
 		entries, err = parseColonFile(spec.path, groupMapper, params.Key)
 	case "services":
-		entries, err = parseServicesFile(spec.path, params.Key)
+		entries, err = parseServicesFile(spec.path, params.Key, params.Protocol)
 	case "protocols":
 		entries, err = parseProtocolsFile(spec.path, params.Key)
 	}
@@ -215,7 +216,8 @@ func parseColonFile(path string, mapper fieldMapper, key string) ([]protocol.Get
 
 // parseServicesFile parses /etc/services.
 // Format: name  port/protocol  [aliases...]  [# comment]
-func parseServicesFile(path, key string) ([]protocol.GetentEntry, error) {
+// If protoFilter is non-empty, only entries matching that protocol are returned.
+func parseServicesFile(path, key, protoFilter string) ([]protocol.GetentEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -244,6 +246,11 @@ func parseServicesFile(path, key string) ([]protocol.GetentEntry, error) {
 		portProto := parts[1]
 		port, proto, ok := strings.Cut(portProto, "/")
 		if !ok {
+			continue
+		}
+
+		// Filter by protocol if specified (e.g., "tcp", "udp").
+		if protoFilter != "" && proto != protoFilter {
 			continue
 		}
 

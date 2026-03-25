@@ -9,7 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var getentFields string
+var (
+	getentFields   string
+	getentProtocol string
+)
 
 var getentCmd = &cobra.Command{
 	Use:   "getent <database> [key]",
@@ -44,6 +47,7 @@ Examples:
 
 		params := engine.GetentParams{
 			Database: args[0],
+			Protocol: getentProtocol,
 		}
 		if len(args) > 1 {
 			params.Key = args[1]
@@ -64,5 +68,6 @@ Examples:
 
 func init() {
 	getentCmd.Flags().StringVar(&getentFields, "fields", "", "comma-separated list of fields to return")
+	getentCmd.Flags().StringVar(&getentProtocol, "protocol", "", "for services: filter by protocol (tcp, udp)")
 	rootCmd.AddCommand(getentCmd)
 }
