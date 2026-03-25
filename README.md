@@ -11,11 +11,22 @@ produce brittle, unstructured output. `aifr` replaces all of those with a
 single binary that is always safe (never writes) and always scoped (enforces
 allow/deny lists with a built-in sensitive-file blocklist).
 
-Scripts which do a lot of git operations often end up repeatedly shelling out
-to git.  With this agent running as a co-process, they can query configuration
-and contents and some history with a read-only tool: safe, because it will not
-touch anything or break the repo; at worst, it will fail to parse something,
-not break your setup.
+The `aifr` tool can read files, read git state, read "getent" system files,
+some basic system information,  and more.  Everything read-only (except the
+MCP self reload task).  No network access, but some network state querying.
+
+A number of filters traditionally done with the Unix pipe handling are moved
+left into aifr, to limit the output without needing a pipeline.  This avoids
+triggering security checks for a shell invocation, even when using `aifr`
+purely as a CLI tool, let alone when you start it as a co-process server so
+that it can quickly answer many questions.  The queries often support options
+to filter which data rows are returned, which columns, to sort, and more.
+
+Outside of AI, scripts which do a lot of git operations often end up
+repeatedly shelling out to git.  With this agent running as a co-process, they
+can query configuration and contents and some history with a read-only tool:
+safe, because it will not touch anything or break the repo; at worst, it will
+fail to parse something, not break your setup.
 
 
 ## Install
