@@ -1,7 +1,9 @@
 aifr — AI File Reader
 =====================
 
-A read-only filesystem and git-tree access tool for AI coding agents.
+A read-only filesystem and git-tree access tool, with both a standalone CLI
+and a JSON-RPC co-process mode which happens to fit the MCP schema for AI
+agents.
 
 AI agents (Claude Code, Cursor, etc.) resort to shell pipelines
 (`sed -n`, `find | grep`, `head/tail`) that trigger security checks and
@@ -9,7 +11,11 @@ produce brittle, unstructured output. `aifr` replaces all of those with a
 single binary that is always safe (never writes) and always scoped (enforces
 allow/deny lists with a built-in sensitive-file blocklist).
 
-Dual-mode: standalone CLI and MCP server.
+Scripts which do a lot of git operations often end up repeatedly shelling out
+to git.  With this agent running as a co-process, they can query configuration
+and contents and some history with a read-only tool: safe, because it will not
+touch anything or break the repo; at worst, it will fail to parse something,
+not break your setup.
 
 
 ## Install
@@ -138,35 +144,35 @@ Run `aifr sensitive` to see the full pattern list.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `read` | Read file contents (chunked, with continuation tokens) |
-| `cat` | Concatenate multiple files with dividers (find+cat in one) |
-| `stat` | File/directory metadata |
-| `list` | Directory listing with depth, pattern, type filters |
-| `search` | Content search (RE2 regexp, context lines, include/exclude) |
-| `find` | Find files by name, type, size, age |
-| `diff` | Compare files or git refs |
-| `refs` | List git branches, tags, remotes |
-| `log` | Git commit log with files changed |
-| `config` | Show effective configuration |
-| `sensitive` | List built-in sensitive file patterns |
-| `skill` | Emit SKILL.md for Claude Code |
-| `mcp` | Start MCP server (stdio or HTTP) |
+| Command     | Description                                                 |
+| ----------- | ----------------------------------------------------------- |
+| `read`      | Read file contents (chunked, with continuation tokens)      |
+| `cat`       | Concatenate multiple files with dividers (find+cat in one)  |
+| `stat`      | File/directory metadata                                     |
+| `list`      | Directory listing with depth, pattern, type filters         |
+| `search`    | Content search (RE2 regexp, context lines, include/exclude) |
+| `find`      | Find files by name, type, size, age                         |
+| `diff`      | Compare files or git refs                                   |
+| `refs`      | List git branches, tags, remotes                            |
+| `log`       | Git commit log with files changed                           |
+| `config`    | Show effective configuration                                |
+| `sensitive` | List built-in sensitive file patterns                       |
+| `skill`     | Emit SKILL.md for Claude Code                               |
+| `mcp`       | Start MCP server (stdio or HTTP)                            |
 
 
 ## Git Path Syntax
 
 Git objects are addressed as `[repo:]<ref>:<path>`:
 
-```
-HEAD:README.md                    auto-detected repo, HEAD
-main:src/lib.go                   branch "main"
-v2.0:config.toml                  tag "v2.0"
-HEAD~3:file.go                    3 commits back
-a1b2c3d:pkg/auth.go              short commit hash
-myrepo:main:terraform/main.tf     named repo from config
-```
+| Input Spec                      | Semantic meaning         |
+| ------------------------------- | ------------------------ |
+| `HEAD:README.md`                | auto-detected repo, HEAD |
+| `main:src/lib.go`               | branch "main"            |
+| `v2.0:config.toml`              | tag "v2.0"               |
+| `HEAD~3:file.go`                | 3 commits back           |
+| `a1b2c3d:pkg/auth.go`           | short commit hash        |
+| `myrepo:main:terraform/main.tf` | named repo from config   |
 
 All git reads go directly through the object store — no checkout, no side
 effects on the working tree.
