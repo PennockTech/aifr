@@ -3,6 +3,7 @@ package gitprovider
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,9 +24,7 @@ type Provider struct {
 // NewProvider creates a new git provider.
 func NewProvider(namedRepos map[string]string) *Provider {
 	repos := make(map[string]string, len(namedRepos))
-	for k, v := range namedRepos {
-		repos[k] = v
-	}
+	maps.Copy(repos, namedRepos)
 	return &Provider{namedRepos: repos}
 }
 
@@ -278,7 +277,7 @@ func parseRelativeRef(ref string) (string, int, bool) {
 // walkParents walks N parent commits from the given commit.
 func walkParents(commit *object.Commit, n int) (*object.Commit, error) {
 	current := commit
-	for i := 0; i < n; i++ {
+	for range n {
 		if current.NumParents() == 0 {
 			return nil, protocol.NewError(protocol.ErrInvalidRef,
 				fmt.Sprintf("commit %s has no parent (requested ~%d)", current.Hash, n))

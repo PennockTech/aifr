@@ -77,7 +77,7 @@ func (e *Engine) Read(path string, params ReadParams) (*protocol.ReadResponse, e
 }
 
 // readLines reads a line range from the file.
-func (e *Engine) readLines(path string, info os.FileInfo, resp *protocol.ReadResponse, lr *LineRange) (*protocol.ReadResponse, error) {
+func (e *Engine) readLines(path string, _ os.FileInfo, resp *protocol.ReadResponse, lr *LineRange) (*protocol.ReadResponse, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening %q: %w", path, err)

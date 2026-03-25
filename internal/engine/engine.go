@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"go.pennock.tech/aifr/internal/accessctl"
 	"go.pennock.tech/aifr/internal/config"
+	"go.pennock.tech/aifr/internal/gitprovider"
 	"go.pennock.tech/aifr/pkg/protocol"
 )
 
@@ -37,9 +39,10 @@ const (
 
 // Engine orchestrates all aifr operations.
 type Engine struct {
-	checker *accessctl.Checker
-	config  *config.Config
-	hmacKey []byte // per-process HMAC key for continuation tokens
+	checker     *accessctl.Checker
+	config      *config.Config
+	gitProvider *gitprovider.Provider
+	hmacKey     []byte // per-process HMAC key for continuation tokens
 }
 
 // NewEngine creates a new Engine.
@@ -48,10 +51,12 @@ func NewEngine(checker *accessctl.Checker, cfg *config.Config) (*Engine, error) 
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("generating HMAC key: %w", err)
 	}
+
 	return &Engine{
-		checker: checker,
-		config:  cfg,
-		hmacKey: key,
+		checker:     checker,
+		config:      cfg,
+		gitProvider: gitprovider.NewProvider(cfg.Git.Repos),
+		hmacKey:     key,
 	}, nil
 }
 
@@ -130,10 +135,5 @@ func (e *Engine) decodeContinuation(token string) (*continuationToken, error) {
 
 // isBinary checks if data contains NUL bytes (binary file heuristic).
 func isBinary(data []byte) bool {
-	for _, b := range data {
-		if b == 0 {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(data, 0)
 }

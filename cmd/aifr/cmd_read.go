@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.pennock.tech/aifr/internal/engine"
+	"go.pennock.tech/aifr/internal/gitprovider"
+	"go.pennock.tech/aifr/pkg/protocol"
 )
 
 var (
@@ -57,7 +59,12 @@ var readCmd = &cobra.Command{
 			path = args[0]
 		}
 
-		resp, err := eng.Read(path, params)
+		var resp *protocol.ReadResponse
+		if gitprovider.IsGitPath(path) {
+			resp, err = eng.GitRead(path, params)
+		} else {
+			resp, err = eng.Read(path, params)
+		}
 		if err != nil {
 			exitWithError(err)
 			return nil

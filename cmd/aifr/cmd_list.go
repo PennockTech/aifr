@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.pennock.tech/aifr/internal/engine"
+	"go.pennock.tech/aifr/internal/gitprovider"
 )
 
 var (
@@ -24,16 +25,26 @@ var listCmd = &cobra.Command{
 			return nil
 		}
 
-		resp, err := eng.List(args[0], engine.ListParams{
-			Depth:   listDepth,
-			Pattern: listPattern,
-			Type:    listType,
-		})
-		if err != nil {
-			exitWithError(err)
-			return nil
+		path := args[0]
+		if gitprovider.IsGitPath(path) {
+			resp, err := eng.GitList(path)
+			if err != nil {
+				exitWithError(err)
+				return nil
+			}
+			writeOutput(resp)
+		} else {
+			resp, err := eng.List(path, engine.ListParams{
+				Depth:   listDepth,
+				Pattern: listPattern,
+				Type:    listType,
+			})
+			if err != nil {
+				exitWithError(err)
+				return nil
+			}
+			writeOutput(resp)
 		}
-		writeOutput(resp)
 		return nil
 	},
 }
