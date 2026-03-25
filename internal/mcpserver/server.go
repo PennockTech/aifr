@@ -38,7 +38,8 @@ func New(eng *engine.Engine) *Server {
 				"aifr_wc to count lines/words/bytes, aifr_checksum for file checksums, " +
 				"aifr_hexdump for binary hex dumps, aifr_rev_parse to resolve git refs, " +
 				"aifr_sysinfo for system inspection (OS, date, uptime, network, routing), " +
-				"and aifr_getent to query system databases (passwd, group, services, protocols). " +
+				"aifr_getent to query system databases (passwd, group, services, protocols), " +
+				"aifr_reflog for git reflog, and aifr_stash_list for git stash list. " +
 				"For aifr_cat, use format=\"text\" with divider=\"xml\" for token-efficient output.",
 		},
 	)

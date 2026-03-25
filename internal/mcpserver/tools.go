@@ -32,6 +32,8 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolHexdump(), s.handleHexdump)
 	s.sdkServer.AddTool(toolSysinfo(), s.handleSysinfo)
 	s.sdkServer.AddTool(toolGetent(), s.handleGetent)
+	s.sdkServer.AddTool(toolReflog(), s.handleReflog)
+	s.sdkServer.AddTool(toolStashList(), s.handleStashList)
 }
 
 // ── Tool Definitions ──
@@ -508,6 +510,74 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 	}
 	resp, err := s.engine.Pathfind(args.Command, engine.PathfindParams{
 		SearchList: args.SearchList,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── reflog ──
+
+func toolReflog() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_reflog",
+		Description: `Show git reflog for a ref (default: HEAD). Lists recent ref updates with timestamps and actions. Replaces git reflog.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ref":       map[string]any{"type": "string", "description": "Git ref to show reflog for (default: HEAD). Can be a branch name."},
+				"repo":      map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
+				"max_count": map[string]any{"type": "integer", "description": "Maximum entries to return (default: 50)"},
+			},
+		}),
+	}
+}
+
+func (s *Server) handleReflog(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Ref      string `json:"ref"`
+		Repo     string `json:"repo"`
+		MaxCount int    `json:"max_count"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.Reflog(args.Repo, args.Ref, engine.ReflogParams{
+		MaxCount: args.MaxCount,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── stash-list ──
+
+func toolStashList() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_stash_list",
+		Description: `List git stashes. Returns stash entries with hashes, authors, dates, and messages. Replaces git stash list.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"repo":      map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
+				"max_count": map[string]any{"type": "integer", "description": "Maximum stash entries to return (default: 50)"},
+			},
+		}),
+	}
+}
+
+func (s *Server) handleStashList(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Repo     string `json:"repo"`
+		MaxCount int    `json:"max_count"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.StashList(args.Repo, engine.ReflogParams{
+		MaxCount: args.MaxCount,
 	})
 	if err != nil {
 		return toolError(err.Error())
