@@ -9,9 +9,12 @@ import (
 )
 
 var (
-	listDepth   int
-	listPattern string
-	listType    string
+	listDepth      int
+	listPattern    string
+	listType       string
+	listSort       string
+	listDescending bool
+	listLimit      int
 )
 
 var listCmd = &cobra.Command{
@@ -35,9 +38,12 @@ var listCmd = &cobra.Command{
 			writeOutput(resp)
 		} else {
 			resp, err := eng.List(path, engine.ListParams{
-				Depth:   listDepth,
-				Pattern: listPattern,
-				Type:    listType,
+				Depth:      listDepth,
+				Pattern:    listPattern,
+				Type:       listType,
+				Sort:       engine.SortOrder(listSort),
+				Descending: listDescending,
+				Limit:      listLimit,
 			})
 			if err != nil {
 				exitWithError(err)
@@ -53,5 +59,8 @@ func init() {
 	listCmd.Flags().IntVar(&listDepth, "depth", 0, "recursion depth (0=immediate, -1=unlimited)")
 	listCmd.Flags().StringVar(&listPattern, "pattern", "", "glob filter on entry name")
 	listCmd.Flags().StringVar(&listType, "type", "", "entry type filter (f=file, d=dir, l=symlink)")
+	listCmd.Flags().StringVar(&listSort, "sort", "", "sort order (name, path, size, mtime, version)")
+	listCmd.Flags().BoolVar(&listDescending, "desc", false, "sort descending")
+	listCmd.Flags().IntVar(&listLimit, "limit", 0, "limit results (0=no limit)")
 	rootCmd.AddCommand(listCmd)
 }

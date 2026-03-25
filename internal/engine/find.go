@@ -14,13 +14,16 @@ import (
 
 // FindParams controls file/path searching.
 type FindParams struct {
-	Name      string        // glob on filename
-	Path      string        // glob on full relative path
-	Type      string        // "f", "d", "l", or ""
-	MaxDepth  int           // -1 = unlimited, 0 = root only
-	MinSize   int64         // 0 = no minimum
-	MaxSize   int64         // 0 = no maximum
-	NewerThan time.Duration // 0 = no filter
+	Name       string        // glob on filename
+	Path       string        // glob on full relative path
+	Type       string        // "f", "d", "l", or ""
+	MaxDepth   int           // -1 = unlimited, 0 = root only
+	MinSize    int64         // 0 = no minimum
+	MaxSize    int64         // 0 = no maximum
+	NewerThan  time.Duration // 0 = no filter
+	Sort       SortOrder     // sort results (default: none = walk order)
+	Descending bool          // reverse sort order
+	Limit      int           // 0 = no limit, N = return first N results after sorting
 }
 
 // Find locates files matching the given criteria.
@@ -50,6 +53,11 @@ func (e *Engine) Find(path string, params FindParams) (*protocol.FindResponse, e
 
 	now := time.Now()
 	e.findDir(resolved, resolved, params, 0, now, resp)
+
+	SortFindEntries(resp.Entries, params.Sort, params.Descending)
+	if params.Limit > 0 && len(resp.Entries) > params.Limit {
+		resp.Entries = resp.Entries[:params.Limit]
+	}
 
 	resp.Total = len(resp.Entries)
 	resp.Complete = true

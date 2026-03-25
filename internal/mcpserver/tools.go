@@ -94,6 +94,9 @@ func toolList() *mcp.Tool {
 				"depth":   map[string]any{"type": "integer", "description": "Recursion depth (0=immediate, -1=unlimited)", "default": 0},
 				"pattern": map[string]any{"type": "string", "description": "Glob filter on entry name"},
 				"type":    map[string]any{"type": "string", "description": "Entry type filter: f=file, d=dir, l=symlink"},
+				"sort":    map[string]any{"type": "string", "description": "Sort order: name, path, size, mtime, version"},
+				"desc":    map[string]any{"type": "boolean", "description": "Sort descending"},
+				"limit":   map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
 			},
 			"required": []string{"path"},
 		}),
@@ -136,6 +139,9 @@ func toolFind() *mcp.Tool {
 				"min_size":   map[string]any{"type": "integer", "description": "Minimum file size in bytes"},
 				"max_size":   map[string]any{"type": "integer", "description": "Maximum file size in bytes"},
 				"newer_than": map[string]any{"type": "string", "description": "Duration e.g. '24h', '7d'"},
+				"sort":       map[string]any{"type": "string", "description": "Sort order: name, path, size, version"},
+				"desc":       map[string]any{"type": "boolean", "description": "Sort descending"},
+				"limit":      map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
 			},
 			"required": []string{"path"},
 		}),
@@ -254,6 +260,9 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		Depth   int    `json:"depth"`
 		Pattern string `json:"pattern"`
 		Type    string `json:"type"`
+		Sort    string `json:"sort"`
+		Desc    bool   `json:"desc"`
+		Limit   int    `json:"limit"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -267,9 +276,12 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		return toolResult(resp)
 	}
 	resp, err := s.engine.List(args.Path, engine.ListParams{
-		Depth:   args.Depth,
-		Pattern: args.Pattern,
-		Type:    args.Type,
+		Depth:      args.Depth,
+		Pattern:    args.Pattern,
+		Type:       args.Type,
+		Sort:       engine.SortOrder(args.Sort),
+		Descending: args.Desc,
+		Limit:      args.Limit,
 	})
 	if err != nil {
 		return toolError(err.Error())
@@ -320,17 +332,23 @@ func (s *Server) handleFind(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		MinSize   int64  `json:"min_size"`
 		MaxSize   int64  `json:"max_size"`
 		NewerThan string `json:"newer_than"`
+		Sort      string `json:"sort"`
+		Desc      bool   `json:"desc"`
+		Limit     int    `json:"limit"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
 
 	params := engine.FindParams{
-		Name:     args.Name,
-		Type:     args.Type,
-		MaxDepth: args.MaxDepth,
-		MinSize:  args.MinSize,
-		MaxSize:  args.MaxSize,
+		Name:       args.Name,
+		Type:       args.Type,
+		MaxDepth:   args.MaxDepth,
+		MinSize:    args.MinSize,
+		MaxSize:    args.MaxSize,
+		Sort:       engine.SortOrder(args.Sort),
+		Descending: args.Desc,
+		Limit:      args.Limit,
 	}
 
 	if args.NewerThan != "" {

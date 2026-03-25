@@ -41,6 +41,54 @@ func WriteErrorText(w io.Writer, err *protocol.AifrError) {
 	fmt.Fprintln(w)
 }
 
+// WriteSearchText writes search results in human-readable format.
+func WriteSearchText(w io.Writer, resp *protocol.SearchResponse) {
+	for _, m := range resp.Matches {
+		for _, line := range m.ContextBefore {
+			fmt.Fprintf(w, "%s-%d-  %s\n", m.File, m.Line-len(m.ContextBefore), line)
+		}
+		fmt.Fprintf(w, "%s:%d:%d: %s\n", m.File, m.Line, m.Column, m.Match)
+		for _, line := range m.ContextAfter {
+			fmt.Fprintf(w, "%s-%d-  %s\n", m.File, m.Line+1, line)
+		}
+	}
+	if resp.Truncated {
+		fmt.Fprintf(w, "... truncated at %d matches (%d files searched, %d matched)\n",
+			resp.TotalMatches, resp.FilesSearched, resp.FilesMatched)
+	}
+}
+
+// WriteFindText writes find results in human-readable format.
+func WriteFindText(w io.Writer, resp *protocol.FindResponse) {
+	for _, entry := range resp.Entries {
+		fmt.Fprintln(w, entry.Path)
+	}
+}
+
+// WriteDiffText writes a diff response in unified diff format.
+func WriteDiffText(w io.Writer, resp *protocol.DiffResponse) {
+	if resp.Identical {
+		fmt.Fprintf(w, "Files %s and %s are identical\n", resp.PathA, resp.PathB)
+		return
+	}
+	if resp.ByteDiff != nil {
+		bd := resp.ByteDiff
+		fmt.Fprintf(w, "%s %s differ: byte %d, line %d, column %d\n",
+			resp.PathA, resp.PathB, bd.Offset, bd.Line, bd.Column)
+		if bd.SizeA != bd.SizeB {
+			fmt.Fprintf(w, "  sizes: %d vs %d\n", bd.SizeA, bd.SizeB)
+		}
+		return
+	}
+	fmt.Fprintf(w, "--- %s\n+++ %s\n", resp.PathA, resp.PathB)
+	for _, h := range resp.Hunks {
+		fmt.Fprintf(w, "@@ -%d,%d +%d,%d @@\n", h.OldStart, h.OldLines, h.NewStart, h.NewLines)
+		for _, line := range h.Lines {
+			fmt.Fprintln(w, line)
+		}
+	}
+}
+
 // WriteCatText writes a cat response with the specified divider format.
 // Divider is one of "plain", "xml", or "none".
 func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {

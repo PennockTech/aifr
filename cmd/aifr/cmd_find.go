@@ -10,13 +10,16 @@ import (
 )
 
 var (
-	findName      string
-	findPath      string
-	findType      string
-	findMaxDepth  int
-	findMinSize   int64
-	findMaxSize   int64
-	findNewerThan string
+	findName       string
+	findPath       string
+	findType       string
+	findMaxDepth   int
+	findMinSize    int64
+	findMaxSize    int64
+	findNewerThan  string
+	findSort       string
+	findDescending bool
+	findLimit      int
 )
 
 var findCmd = &cobra.Command{
@@ -31,12 +34,15 @@ var findCmd = &cobra.Command{
 		}
 
 		params := engine.FindParams{
-			Name:     findName,
-			Path:     findPath,
-			Type:     findType,
-			MaxDepth: findMaxDepth,
-			MinSize:  findMinSize,
-			MaxSize:  findMaxSize,
+			Name:       findName,
+			Path:       findPath,
+			Type:       findType,
+			MaxDepth:   findMaxDepth,
+			MinSize:    findMinSize,
+			MaxSize:    findMaxSize,
+			Sort:       engine.SortOrder(findSort),
+			Descending: findDescending,
+			Limit:      findLimit,
 		}
 
 		if findNewerThan != "" {
@@ -66,5 +72,8 @@ func init() {
 	findCmd.Flags().Int64Var(&findMinSize, "min-size", 0, "minimum file size in bytes")
 	findCmd.Flags().Int64Var(&findMaxSize, "max-size", 0, "maximum file size in bytes")
 	findCmd.Flags().StringVar(&findNewerThan, "newer-than", "", "duration (e.g., 24h, 7d)")
+	findCmd.Flags().StringVar(&findSort, "sort", "", "sort order (name, path, size, version)")
+	findCmd.Flags().BoolVar(&findDescending, "desc", false, "sort descending")
+	findCmd.Flags().IntVar(&findLimit, "limit", 0, "limit results (0=no limit)")
 	rootCmd.AddCommand(findCmd)
 }

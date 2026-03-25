@@ -14,9 +14,12 @@ import (
 
 // ListParams controls directory listing.
 type ListParams struct {
-	Depth   int    // 0 = immediate children, -1 = unlimited, N = N levels
-	Pattern string // glob filter on entry name
-	Type    string // "f" = files, "d" = dirs, "l" = symlinks, "" = all
+	Depth      int       // 0 = immediate children, -1 = unlimited, N = N levels
+	Pattern    string    // glob filter on entry name
+	Type       string    // "f" = files, "d" = dirs, "l" = symlinks, "" = all
+	Sort       SortOrder // sort entries (default: none = filesystem order)
+	Descending bool      // reverse sort order
+	Limit      int       // 0 = no limit, N = return first N entries after sorting
 }
 
 // List returns directory entries.
@@ -47,6 +50,11 @@ func (e *Engine) List(path string, params ListParams) (*protocol.ListResponse, e
 	entries, err := e.walkDir(resolved, resolved, params, 0)
 	if err != nil {
 		return nil, err
+	}
+
+	SortEntries(entries, params.Sort, params.Descending)
+	if params.Limit > 0 && len(entries) > params.Limit {
+		entries = entries[:params.Limit]
 	}
 
 	resp.Entries = entries

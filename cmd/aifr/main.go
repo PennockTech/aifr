@@ -12,6 +12,7 @@ import (
 	"go.pennock.tech/aifr/internal/accessctl"
 	"go.pennock.tech/aifr/internal/config"
 	"go.pennock.tech/aifr/internal/engine"
+	"go.pennock.tech/aifr/internal/output"
 	"go.pennock.tech/aifr/internal/version"
 	"go.pennock.tech/aifr/pkg/protocol"
 )
@@ -93,8 +94,30 @@ func writeJSON(v any) {
 
 // writeOutput writes the response in the selected format.
 func writeOutput(v any) {
-	// For now, always JSON. --format text will be added in polish phase.
-	writeJSON(v)
+	if flagFormat != "text" {
+		writeJSON(v)
+		return
+	}
+	w := os.Stdout
+	switch resp := v.(type) {
+	case *protocol.ReadResponse:
+		output.WriteReadText(w, resp)
+	case *protocol.StatEntry:
+		output.WriteStatText(w, resp)
+	case *protocol.ListResponse:
+		output.WriteListText(w, resp)
+	case *protocol.SearchResponse:
+		output.WriteSearchText(w, resp)
+	case *protocol.FindResponse:
+		output.WriteFindText(w, resp)
+	case *protocol.DiffResponse:
+		output.WriteDiffText(w, resp)
+	case *protocol.ErrorResponse:
+		output.WriteErrorText(w, resp.Error)
+	default:
+		// Types without a dedicated text formatter fall back to JSON.
+		writeJSON(v)
+	}
 }
 
 // loadConfig loads the effective configuration.
