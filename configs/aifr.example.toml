@@ -1,0 +1,55 @@
+# aifr example configuration
+# Copy to ./.aifr.toml or ~/.config/aifr/config.toml
+
+# Paths the tool is allowed to read.
+# Supports globs. Paths are resolved to absolute before matching.
+# If empty, the tool operates in "current directory only" mode:
+# it allows the cwd and everything beneath it.
+# Tilde expansion (~/ and ~user/) is supported.
+allow = [
+  "~/projects/**",
+  "/etc/nats/**",
+]
+
+# Explicit deny patterns. Evaluated AFTER allow, so deny wins.
+# The built-in sensitive-file list is always active in addition to this.
+deny = [
+  "~/projects/secrets/**",
+  "**/.env.production",
+]
+
+# Additional security credentials deny rules to augment (NEVER replace)
+# the default list of sensitive file patterns.
+creds_deny = [
+  "**/*.nk",
+]
+
+# Automatically add $PATH directories to the allow list so that AI agents
+# can discover available commands. Only allows direct children (non-recursive).
+# The sensitive-file blocklist still applies to files in PATH directories.
+# Default: true
+# path_readable = true
+
+# Git repositories to expose tree access for.
+# Each entry maps a name to a repo path.
+# If empty, git operations use the repo found by walking up from cwd.
+[git.repos]
+# main = "~/projects/myapp"
+# infra = "~/projects/infra"
+
+# Glob patterns to auto-discover git repositories.
+# Each matching directory is registered as a named repo.
+# The name is derived from the directory basename (minus .git suffix).
+# Explicit [git.repos] entries take precedence over glob matches.
+# Supports doublestar globs (e.g., **/*.git for nested structures).
+[git]
+# repos_glob = [
+#   "/srv/git/*.git",
+#   "~/bare-repos/*",
+# ]
+
+# Cache settings (MCP mode only; CLI is stateless).
+[cache]
+max_entries = 10000          # Max cached git objects
+max_memory_mb = 256          # Soft memory ceiling
+ttl_seconds = 300            # TTL for cached items
