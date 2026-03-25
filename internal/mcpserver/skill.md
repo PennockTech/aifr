@@ -13,7 +13,12 @@ sensitive-file blocklist).
 - Listing directory contents (instead of `ls`, `find`)
 - Getting file metadata (instead of `stat`)
 - Reading files from git history without checkout
-- Comparing files or git refs
+- Comparing files or git refs (line diff or byte-level cmp)
+- Counting lines/words/bytes (instead of `wc`)
+- Computing file checksums (instead of `sha256sum`, `md5sum`)
+- Hex-dumping binary files (instead of `xxd`, `hexdump`)
+- Resolving git refs to commit hashes (instead of `git rev-parse`)
+- System inspection: OS, date, hostname, network, routing (instead of `uname`, `date`, `hostname`, `ip addr`)
 
 ## CLI Commands
 
@@ -77,8 +82,47 @@ aifr log /path/to/repo:main
 ### Compare files
 ```
 aifr diff file1.go file2.go
+aifr diff --cmp file1.bin file2.bin      # byte-level comparison
 aifr diff HEAD~1:main.go main.go
 aifr diff main:lib.go feature:lib.go
+```
+
+### Count lines/words/bytes
+```
+aifr wc file.go
+aifr wc -l *.go
+aifr wc --total-only -l src/**/*.go      # combined total only
+aifr wc HEAD:README.md
+```
+
+### File checksums
+```
+aifr checksum file.go
+aifr checksum -a sha512 *.go
+aifr checksum -a sha3-256 -e base64 file.go
+aifr checksum HEAD:README.md
+```
+
+### Hex dump
+```
+aifr hexdump binary.dat
+aifr hexdump -s 1024 -l 512 binary.dat   # offset + length
+aifr hexdump HEAD:binary.dat
+```
+
+### Resolve git refs
+```
+aifr rev-parse HEAD
+aifr rev-parse main
+aifr rev-parse --repo myrepo v2.0
+aifr rev-parse HEAD~3
+```
+
+### System inspection
+```
+aifr sysinfo
+aifr sysinfo --sections date             # just date/time
+aifr sysinfo --sections os,hostname
 ```
 
 ### Find commands in PATH
@@ -129,7 +173,9 @@ All commands output JSON by default. Use `--format text` for human-readable outp
 
 `aifr mcp` starts the MCP server (stdio by default). The same operations are
 available as MCP tools: `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
-`aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`.
+`aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, `aifr_diff`,
+`aifr_pathfind`, `aifr_wc`, `aifr_checksum`, `aifr_hexdump`,
+`aifr_rev_parse`, `aifr_sysinfo`.
 
 For `aifr_cat`, use `format="text"` with `divider="xml"` for token-efficient
 multi-file reading with `<file path="...">` wrappers.

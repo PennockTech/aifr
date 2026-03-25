@@ -37,6 +37,17 @@ creds_deny = [
 # main = "~/projects/myapp"
 # infra = "~/projects/infra"
 
+# Glob patterns to auto-discover git repositories.
+# Each matching directory is registered as a named repo.
+# The name is derived from the directory basename (minus .git suffix).
+# Explicit [git.repos] entries take precedence over glob matches.
+# Supports doublestar globs (e.g., **/*.git for nested structures).
+[git]
+# repos_glob = [
+#   "/srv/git/*.git",
+#   "~/bare-repos/*",
+# ]
+
 # Cache settings (MCP mode only; CLI is stateless).
 [cache]
 max_entries = 10000          # Max cached git objects

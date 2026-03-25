@@ -101,12 +101,25 @@ type DiffHunk struct {
 	Lines    []string `json:"lines"`
 }
 
+// ByteDiff describes the first byte-level difference between two files.
+type ByteDiff struct {
+	Offset int64 `json:"offset"`
+	Line   int   `json:"line"`
+	Column int   `json:"column"`
+	ByteA  byte  `json:"byte_a"`
+	ByteB  byte  `json:"byte_b"`
+	SizeA  int64 `json:"size_a"`
+	SizeB  int64 `json:"size_b"`
+}
+
 // DiffResponse is the JSON response for a diff operation.
 type DiffResponse struct {
-	PathA  string     `json:"path_a"`
-	PathB  string     `json:"path_b"`
-	Source string     `json:"source"`
-	Hunks  []DiffHunk `json:"hunks"`
+	PathA     string     `json:"path_a"`
+	PathB     string     `json:"path_b"`
+	Source    string     `json:"source"`
+	Identical bool       `json:"identical"`
+	Hunks     []DiffHunk `json:"hunks,omitempty"`
+	ByteDiff  *ByteDiff  `json:"byte_diff,omitempty"`
 }
 
 // ErrorResponse is the JSON error response.

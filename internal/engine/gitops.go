@@ -339,8 +339,13 @@ func (e *Engine) Log(repoName, ref string, maxCount int) (*protocol.LogResponse,
 	return resp, nil
 }
 
+// DiffParams controls the diff operation mode.
+type DiffParams struct {
+	ByteLevel bool // if true, byte-level comparison (cmp mode)
+}
+
 // Diff compares two files (filesystem or git).
-func (e *Engine) Diff(pathA, pathB string) (*protocol.DiffResponse, error) {
+func (e *Engine) Diff(pathA, pathB string, params DiffParams) (*protocol.DiffResponse, error) {
 	contentA, err := e.readContentForDiff(pathA)
 	if err != nil {
 		return nil, fmt.Errorf("reading %q: %w", pathA, err)
@@ -351,14 +356,64 @@ func (e *Engine) Diff(pathA, pathB string) (*protocol.DiffResponse, error) {
 		return nil, fmt.Errorf("reading %q: %w", pathB, err)
 	}
 
-	hunks := computeDiff(contentA, contentB)
-
-	return &protocol.DiffResponse{
+	resp := &protocol.DiffResponse{
 		PathA:  pathA,
 		PathB:  pathB,
 		Source: "mixed",
-		Hunks:  hunks,
-	}, nil
+	}
+
+	if params.ByteLevel {
+		resp.Identical, resp.ByteDiff = computeByteDiff(contentA, contentB)
+	} else {
+		resp.Identical = contentA == contentB
+		if !resp.Identical {
+			resp.Hunks = computeDiff(contentA, contentB)
+		}
+	}
+
+	return resp, nil
+}
+
+// computeByteDiff finds the first byte-level difference (cmp mode).
+func computeByteDiff(a, b string) (identical bool, bd *protocol.ByteDiff) {
+	if a == b {
+		return true, nil
+	}
+
+	dataA := []byte(a)
+	dataB := []byte(b)
+	n := min(len(dataA), len(dataB))
+
+	line := 1
+	col := 1
+	for i := 0; i < n; i++ {
+		if dataA[i] != dataB[i] {
+			return false, &protocol.ByteDiff{
+				Offset: int64(i),
+				Line:   line,
+				Column: col,
+				ByteA:  dataA[i],
+				ByteB:  dataB[i],
+				SizeA:  int64(len(dataA)),
+				SizeB:  int64(len(dataB)),
+			}
+		}
+		if dataA[i] == '\n' {
+			line++
+			col = 1
+		} else {
+			col++
+		}
+	}
+
+	// Files differ in length but share a common prefix.
+	return false, &protocol.ByteDiff{
+		Offset: int64(n),
+		Line:   line,
+		Column: col,
+		SizeA:  int64(len(dataA)),
+		SizeB:  int64(len(dataB)),
+	}
 }
 
 // readContentForDiff reads content from a filesystem path or git path.

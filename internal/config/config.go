@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -31,7 +32,8 @@ func (c *Config) IsPathReadable() bool {
 
 // GitConfig holds git-related configuration.
 type GitConfig struct {
-	Repos map[string]string `toml:"repos"`
+	Repos     map[string]string `toml:"repos"`
+	ReposGlob []string          `toml:"repos_glob"`
 }
 
 // CacheConfig holds MCP cache settings.
@@ -106,7 +108,57 @@ func Load(params LoadParams) (*Config, error) {
 		cfg.Git.Repos[name] = ResolvePath(expanded)
 	}
 
+	// Expand repos_glob patterns into the Repos map.
+	if err := expandReposGlob(cfg); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+// expandReposGlob expands glob patterns in Git.ReposGlob into Git.Repos.
+// Explicit Repos entries take precedence over glob-discovered ones.
+func expandReposGlob(cfg *Config) error {
+	for _, pattern := range cfg.Git.ReposGlob {
+		expanded, err := ExpandTilde(pattern)
+		if err != nil {
+			return fmt.Errorf("expanding repos_glob %q: %w", pattern, err)
+		}
+
+		matches, err := doublestar.FilepathGlob(expanded)
+		if err != nil {
+			slog.Warn("invalid repos_glob pattern", "pattern", pattern, "error", err)
+			continue
+		}
+
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil || !info.IsDir() {
+				continue
+			}
+
+			name := deriveRepoName(match)
+			if _, exists := cfg.Git.Repos[name]; exists {
+				continue // explicit repos take precedence
+			}
+
+			if cfg.Git.Repos == nil {
+				cfg.Git.Repos = make(map[string]string)
+			}
+			resolved := ResolvePath(match)
+			cfg.Git.Repos[name] = resolved
+			slog.Debug("repos_glob: discovered repo", "name", name, "path", resolved)
+		}
+	}
+	return nil
+}
+
+// deriveRepoName generates a repo name from a directory path.
+// Strips .git suffix from the base name.
+func deriveRepoName(path string) string {
+	name := filepath.Base(path)
+	name = strings.TrimSuffix(name, ".git")
+	return name
 }
 
 // findConfigFile returns the path to the first config file found,

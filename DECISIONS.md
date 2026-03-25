@@ -54,3 +54,31 @@ In CLI mode, tokens are scoped to a single invocation; in MCP mode, the
 key persists for the server lifetime.
 
 ---
+
+## 5. No JSON Query Tool (jq)
+
+**Decision:** Do not implement a JSON query tool in aifr.
+
+**Context:** `jq` triggers Claude Code permission prompts because all Bash
+commands are subject to permission checks — the system cannot distinguish
+`jq '.key' file.json` from `rm -rf /`. This makes jq inconvenient for agents.
+
+**Rationale:** jq is Turing-complete; any useful subset would still be a large
+surface area increase that is out of scope for a filesystem/git access tool.
+AI agents can instead use `aifr_read` to retrieve JSON content and parse it
+in-context, avoiding the Bash permission prompt entirely. If demand grows for
+structured queries, a minimal property-access-only tool may be reconsidered.
+
+---
+
+## 6. sysinfo Access Control Exemption
+
+**Decision:** System metadata paths (`/proc/*`, `/etc/os-release`) are read
+directly by `aifr sysinfo` without going through the access control checker.
+
+**Rationale:** The access control model protects user data; `/proc/net/route`,
+`/etc/os-release`, and similar paths are system metadata, not user files. This
+matches the precedent set by `os.Hostname()` and `runtime.GOOS`, which also
+bypass access control. The sysinfo command never executes subprocesses.
+
+---

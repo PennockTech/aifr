@@ -26,6 +26,11 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolDiff(), s.handleDiff)
 	s.sdkServer.AddTool(toolCat(), s.handleCat)
 	s.sdkServer.AddTool(toolPathfind(), s.handlePathfind)
+	s.sdkServer.AddTool(toolWc(), s.handleWc)
+	s.sdkServer.AddTool(toolChecksum(), s.handleChecksum)
+	s.sdkServer.AddTool(toolRevParse(), s.handleRevParse)
+	s.sdkServer.AddTool(toolHexdump(), s.handleHexdump)
+	s.sdkServer.AddTool(toolSysinfo(), s.handleSysinfo)
 }
 
 // ── Tool Definitions ──
@@ -169,12 +174,14 @@ func toolDiff() *mcp.Tool {
 	return &mcp.Tool{
 		Name: "aifr_diff",
 		Description: `Compare two files. Supports filesystem paths and git refs.
+Use byte_level=true for cmp-style byte comparison (reports first differing byte).
 Examples: diff file1.go file2.go, diff main:lib.go feature:lib.go, diff HEAD~1:README.md README.md`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path_a": map[string]any{"type": "string", "description": "First path (filesystem or git ref:path)"},
-				"path_b": map[string]any{"type": "string", "description": "Second path (filesystem or git ref:path)"},
+				"path_a":     map[string]any{"type": "string", "description": "First path (filesystem or git ref:path)"},
+				"path_b":     map[string]any{"type": "string", "description": "Second path (filesystem or git ref:path)"},
+				"byte_level": map[string]any{"type": "boolean", "description": "Byte-level comparison (cmp mode): report first differing byte instead of line diff"},
 			},
 			"required": []string{"path_a", "path_b"},
 		}),
@@ -373,13 +380,16 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 
 func (s *Server) handleDiff(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		PathA string `json:"path_a"`
-		PathB string `json:"path_b"`
+		PathA     string `json:"path_a"`
+		PathB     string `json:"path_b"`
+		ByteLevel bool   `json:"byte_level"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
-	resp, err := s.engine.Diff(args.PathA, args.PathB)
+	resp, err := s.engine.Diff(args.PathA, args.PathB, engine.DiffParams{
+		ByteLevel: args.ByteLevel,
+	})
 	if err != nil {
 		return toolError(err.Error())
 	}
@@ -497,6 +507,199 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 	}
 	resp, err := s.engine.Pathfind(args.Command, engine.PathfindParams{
 		SearchList: args.SearchList,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── sysinfo ──
+
+func toolSysinfo() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_sysinfo",
+		Description: `System inspection for fault diagnosis: OS info, current date/time (including year for copyrights), hostname, network interfaces, routing table. No files written, no commands executed.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"sections": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string", "enum": []string{"os", "date", "hostname", "network", "routing"}},
+					"description": "Sections to include (default: all)",
+				},
+			},
+		}),
+	}
+}
+
+func (s *Server) handleSysinfo(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Sections []string `json:"sections"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.Sysinfo(engine.SysinfoParams{
+		Sections: args.Sections,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── hexdump ──
+
+func toolHexdump() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_hexdump",
+		Description: `Hex dump of file contents in canonical format (offset | hex bytes | ASCII). Default: 256 bytes from offset 0, max 64 KiB. Supports filesystem paths and git refs.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":   map[string]any{"type": "string", "description": "File path (filesystem or git ref:path)"},
+				"offset": map[string]any{"type": "integer", "description": "Starting byte offset (default 0)"},
+				"length": map[string]any{"type": "integer", "description": "Bytes to dump (default 256, max 65536)"},
+			},
+			"required": []string{"path"},
+		}),
+	}
+}
+
+func (s *Server) handleHexdump(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Path   string `json:"path"`
+		Offset int64  `json:"offset"`
+		Length int64  `json:"length"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.Hexdump(args.Path, engine.HexdumpParams{
+		Offset: args.Offset,
+		Length: args.Length,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── rev-parse ──
+
+func toolRevParse() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_rev_parse",
+		Description: `Resolve a git ref (branch, tag, commit, HEAD~N) to its full commit hash and metadata. Replaces git rev-parse.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ref":  map[string]any{"type": "string", "description": "Git ref to resolve (branch, tag, commit hash, HEAD~N). Defaults to HEAD."},
+				"repo": map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect from cwd)"},
+			},
+			"required": []string{"ref"},
+		}),
+	}
+}
+
+func (s *Server) handleRevParse(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Ref  string `json:"ref"`
+		Repo string `json:"repo"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.RevParse(args.Repo, args.Ref)
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── checksum ──
+
+func toolChecksum() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_checksum",
+		Description: `Compute cryptographic checksums for one or more files. Supports sha256 (default), sha1, sha512, sha3-256, sha3-512, md5. Output as hex (default), base64, or base64url. Accepts filesystem paths and git refs.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"paths":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "File paths to checksum (filesystem or git ref:path)"},
+				"algorithm": map[string]any{"type": "string", "description": "Hash algorithm: sha256, sha1, sha512, sha3-256, sha3-512, md5 (default: sha256)"},
+				"encoding":  map[string]any{"type": "string", "description": "Output encoding: hex, base64, base64url (default: hex)"},
+			},
+			"required": []string{"paths"},
+		}),
+	}
+}
+
+func (s *Server) handleChecksum(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Paths     []string `json:"paths"`
+		Algorithm string   `json:"algorithm"`
+		Encoding  string   `json:"encoding"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	if len(args.Paths) == 0 {
+		return toolError("paths is required and must not be empty")
+	}
+	resp, err := s.engine.Checksum(args.Paths, engine.ChecksumParams{
+		Algorithm: args.Algorithm,
+		Encoding:  args.Encoding,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return toolResult(resp)
+}
+
+// ── wc ──
+
+func toolWc() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "aifr_wc",
+		Description: `Count lines, words, bytes, and/or characters in one or more files. Accepts filesystem paths and git refs. If no count flags are set, returns lines + words + bytes. Use total_only=true to get only the combined total (avoids per-file output).`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"paths":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "File paths to count (filesystem or git ref:path)"},
+				"lines":      map[string]any{"type": "boolean", "description": "Count lines"},
+				"words":      map[string]any{"type": "boolean", "description": "Count words"},
+				"bytes":      map[string]any{"type": "boolean", "description": "Count bytes"},
+				"chars":      map[string]any{"type": "boolean", "description": "Count characters (runes)"},
+				"total_only": map[string]any{"type": "boolean", "description": "Return only the combined total, suppress per-file entries"},
+			},
+			"required": []string{"paths"},
+		}),
+	}
+}
+
+func (s *Server) handleWc(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Paths     []string `json:"paths"`
+		Lines     bool     `json:"lines"`
+		Words     bool     `json:"words"`
+		Bytes     bool     `json:"bytes"`
+		Chars     bool     `json:"chars"`
+		TotalOnly bool     `json:"total_only"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	if len(args.Paths) == 0 {
+		return toolError("paths is required and must not be empty")
+	}
+	resp, err := s.engine.Wc(args.Paths, engine.WcParams{
+		Lines:     args.Lines,
+		Words:     args.Words,
+		Bytes:     args.Bytes,
+		Chars:     args.Chars,
+		TotalOnly: args.TotalOnly,
 	})
 	if err != nil {
 		return toolError(err.Error())
