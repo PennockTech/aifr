@@ -26,6 +26,8 @@ returns structured JSON.
 | `git branch -a` | `aifr_refs` |
 | `diff file1 file2` | `aifr_diff` with `path_a`, `path_b` |
 | `git show HEAD:file` | `aifr_read` with `path: "HEAD:file"` |
+| `which git` | `aifr_pathfind` with `command: "git"` |
+| `compgen -c git-` | `aifr_pathfind` with `command: "git-*"` |
 
 
 ## Which tool to use
@@ -43,6 +45,7 @@ returns structured JSON.
 | View commit log | `aifr_log` | optional `ref`, `max_count` |
 | Compare two files | `aifr_diff` | `path_a`, `path_b` |
 | Concatenate found files | `aifr_cat` | `root`, `name`, `exclude_path` |
+| Find commands in PATH | `aifr_pathfind` | `command`, optional `search_list` |
 
 
 ## Git path syntax

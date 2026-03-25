@@ -222,6 +222,93 @@ main = "~/projects/myapp"
 	}
 }
 
+func TestResolvePatternPrefixWithSymlink(t *testing.T) {
+	// Create a directory and a symlink to it.
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	link := filepath.Join(dir, "link")
+	os.MkdirAll(real, 0o755) //nolint:errcheck
+	os.Symlink(real, link)   //nolint:errcheck
+
+	// A pattern whose prefix goes through a symlink should be resolved.
+	pattern := link + "/projects/**"
+	got := resolvePatternPrefix(pattern)
+	want := real + "/projects/**"
+	if got != want {
+		t.Errorf("resolvePatternPrefix(%q) = %q, want %q", pattern, got, want)
+	}
+}
+
+func TestResolvePatternPrefixNoGlob(t *testing.T) {
+	// A pattern with no glob chars but a trailing path component
+	// that doesn't exist — prefix resolution should still work for the
+	// existing directory portion.
+	dir := t.TempDir()
+	pattern := dir + "/nonexistent"
+	got := resolvePatternPrefix(pattern)
+	// dir exists and is resolved; /nonexistent is preserved as suffix
+	if got != pattern {
+		t.Errorf("resolvePatternPrefix(%q) = %q, want %q", pattern, got, pattern)
+	}
+}
+
+func TestResolvePatternPrefixPureGlob(t *testing.T) {
+	// A pure glob pattern with no concrete prefix should be unchanged.
+	pattern := "**/secrets/**"
+	got := resolvePatternPrefix(pattern)
+	if got != pattern {
+		t.Errorf("resolvePatternPrefix(%q) = %q, want %q", pattern, got, pattern)
+	}
+}
+
+func TestLoadResolvesSymlinksInPatterns(t *testing.T) {
+	// Create a directory structure with a symlink.
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	link := filepath.Join(dir, "link")
+	os.MkdirAll(real, 0o755) //nolint:errcheck
+	os.Symlink(real, link)   //nolint:errcheck
+
+	cfgFile := filepath.Join(dir, "test.toml")
+	content := `allow = ["` + link + `/projects/**"]`
+	if err := os.WriteFile(cfgFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(LoadParams{ConfigPath: cfgFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := real + "/projects/**"
+	if len(cfg.Allow) != 1 || cfg.Allow[0] != want {
+		t.Errorf("Allow = %v, want [%s]", cfg.Allow, want)
+	}
+}
+
+func TestLoadResolvesSymlinksInGitRepos(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	link := filepath.Join(dir, "link")
+	os.MkdirAll(real, 0o755) //nolint:errcheck
+	os.Symlink(real, link)   //nolint:errcheck
+
+	cfgFile := filepath.Join(dir, "test.toml")
+	content := "[git.repos]\nmain = \"" + link + "\""
+	if err := os.WriteFile(cfgFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(LoadParams{ConfigPath: cfgFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Git.Repos["main"] != real {
+		t.Errorf("Git.Repos[main] = %q, want %q", cfg.Git.Repos["main"], real)
+	}
+}
+
 func TestLoadInvalidTOML(t *testing.T) {
 	dir := t.TempDir()
 	cfgFile := filepath.Join(dir, "bad.toml")

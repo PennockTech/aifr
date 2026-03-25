@@ -16,11 +16,17 @@ import (
 
 // Config holds the effective configuration for aifr.
 type Config struct {
-	Allow     []string    `toml:"allow"`
-	Deny      []string    `toml:"deny"`
-	CredsDeny []string    `toml:"creds_deny"`
-	Git       GitConfig   `toml:"git"`
-	Cache     CacheConfig `toml:"cache"`
+	Allow        []string    `toml:"allow"`
+	Deny         []string    `toml:"deny"`
+	CredsDeny    []string    `toml:"creds_deny"`
+	PathReadable *bool       `toml:"path_readable"` // add $PATH dirs to allow list (default true)
+	Git          GitConfig   `toml:"git"`
+	Cache        CacheConfig `toml:"cache"`
+}
+
+// IsPathReadable returns the effective value of PathReadable (default true).
+func (c *Config) IsPathReadable() bool {
+	return c.PathReadable == nil || *c.PathReadable
 }
 
 // GitConfig holds git-related configuration.
@@ -77,27 +83,27 @@ func Load(params LoadParams) (*Config, error) {
 		return nil, fmt.Errorf("parsing config %q: %w", path, err)
 	}
 
-	// Resolve tildes in path patterns.
-	cfg.Allow, err = resolvePatternTildes(cfg.Allow)
+	// Resolve tildes and symlinks in path patterns.
+	cfg.Allow, err = resolvePatterns(cfg.Allow)
 	if err != nil {
 		return nil, fmt.Errorf("resolving allow patterns: %w", err)
 	}
-	cfg.Deny, err = resolvePatternTildes(cfg.Deny)
+	cfg.Deny, err = resolvePatterns(cfg.Deny)
 	if err != nil {
 		return nil, fmt.Errorf("resolving deny patterns: %w", err)
 	}
-	cfg.CredsDeny, err = resolvePatternTildes(cfg.CredsDeny)
+	cfg.CredsDeny, err = resolvePatterns(cfg.CredsDeny)
 	if err != nil {
 		return nil, fmt.Errorf("resolving creds_deny patterns: %w", err)
 	}
 
-	// Resolve tildes in git repo paths.
+	// Resolve tildes and symlinks in git repo paths.
 	for name, repoPath := range cfg.Git.Repos {
-		resolved, err := ExpandTilde(repoPath)
+		expanded, err := ExpandTilde(repoPath)
 		if err != nil {
 			return nil, fmt.Errorf("resolving git repo path %q: %w", name, err)
 		}
-		cfg.Git.Repos[name] = resolved
+		cfg.Git.Repos[name] = ResolvePath(expanded)
 	}
 
 	return cfg, nil
@@ -181,15 +187,80 @@ func ExpandTilde(path string) (string, error) {
 	return filepath.Join(u.HomeDir, path[slashIdx+1:]), nil
 }
 
-// resolvePatternTildes expands tildes in a slice of glob patterns.
-func resolvePatternTildes(patterns []string) ([]string, error) {
+// resolvePatterns expands tildes and resolves symlinks in the non-glob
+// prefix of each pattern, so that patterns match the symlink-resolved
+// paths that the access checker compares against.
+func resolvePatterns(patterns []string) ([]string, error) {
 	result := make([]string, len(patterns))
 	for i, p := range patterns {
 		expanded, err := ExpandTilde(p)
 		if err != nil {
 			return nil, err
 		}
-		result[i] = expanded
+		result[i] = resolvePatternPrefix(expanded)
 	}
 	return result, nil
+}
+
+// resolvePatternPrefix resolves symlinks in the literal (non-glob) prefix
+// of a pattern. For example, if /home is a symlink to /export/home, then
+// "/home/user/projects/**" becomes "/export/home/user/projects/**".
+//
+// If no portion of the prefix exists on disk, the pattern is returned
+// unchanged (it may refer to a path that will be created later, or be a
+// relative glob like "**/secrets/**").
+func resolvePatternPrefix(pattern string) string {
+	// Find the first glob metacharacter.
+	globChars := "*?[{"
+	firstGlob := len(pattern)
+	for i, c := range pattern {
+		if strings.ContainsRune(globChars, c) {
+			firstGlob = i
+			break
+		}
+	}
+
+	// Extract the literal prefix (up to the last separator before the glob).
+	literal := pattern[:firstGlob]
+	if lastSep := strings.LastIndexByte(literal, '/'); lastSep >= 0 {
+		literal = literal[:lastSep]
+	} else {
+		// No separator in the literal prefix — nothing concrete to resolve.
+		return pattern
+	}
+
+	if literal == "" {
+		return pattern
+	}
+
+	// Walk backward through the literal prefix to find the longest portion
+	// that exists on disk, so we can resolve symlinks in it. The tail
+	// (components that don't exist yet) is preserved as-is.
+	tryPath := literal
+	for tryPath != "" && tryPath != "/" && tryPath != "." {
+		resolved, err := filepath.EvalSymlinks(tryPath)
+		if err == nil {
+			tail := literal[len(tryPath):]
+			suffix := pattern[len(literal):]
+			return resolved + tail + suffix
+		}
+		tryPath = filepath.Dir(tryPath)
+	}
+
+	return pattern
+}
+
+// ResolvePath resolves a concrete (non-glob) path: makes it absolute and
+// resolves symlinks. Used for git repo paths and other non-pattern paths
+// in the config. Falls back to filepath.Clean if the path does not exist.
+func ResolvePath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
+	}
+	return resolved
 }

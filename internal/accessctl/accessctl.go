@@ -66,12 +66,17 @@ func NewChecker(params CheckerParams) (*Checker, error) {
 	}
 
 	// If allow list is empty, default to cwd-only mode.
+	// Resolve symlinks so the fallback matches the resolved paths in Check().
 	if len(c.allow) == 0 {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return nil, fmt.Errorf("getting cwd for default allow: %w", err)
 		}
-		c.cwdAllow = cwd
+		resolved, err := filepath.EvalSymlinks(cwd)
+		if err != nil {
+			resolved = cwd
+		}
+		c.cwdAllow = resolved
 	}
 
 	return c, nil

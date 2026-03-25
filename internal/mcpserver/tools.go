@@ -25,6 +25,7 @@ func (s *Server) registerTools() {
 	s.sdkServer.AddTool(toolLog(), s.handleLog)
 	s.sdkServer.AddTool(toolDiff(), s.handleDiff)
 	s.sdkServer.AddTool(toolCat(), s.handleCat)
+	s.sdkServer.AddTool(toolPathfind(), s.handlePathfind)
 }
 
 // ── Tool Definitions ──
@@ -459,6 +460,47 @@ func (s *Server) handleCat(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		}, nil
 	}
 
+	return toolResult(resp)
+}
+
+func toolPathfind() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "aifr_pathfind",
+		Description: `Find commands in PATH-like search lists. A better "which" that reports ALL
+matches with masking info. Supports glob wildcards in command name (e.g., "git-*").
+
+search_list specs:
+  "envvar:PATH"                     → $PATH directories (default)
+  "envvar:CLASSPATH"                → $CLASSPATH directories
+  "dirlist:/usr/bin:/usr/local/bin" → explicit directory list
+
+Each entry shows path, mode, executable flag, and whether it is masked by an
+earlier entry in the search list.`,
+		InputSchema: mustSchema(map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command":     map[string]any{"type": "string", "description": "Command name or glob pattern (e.g., 'git', 'git-*', 'python3.[0-9]')"},
+				"search_list": map[string]any{"type": "string", "description": "Search list spec (default: envvar:PATH)"},
+			},
+			"required": []string{"command"},
+		}),
+	}
+}
+
+func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args struct {
+		Command    string `json:"command"`
+		SearchList string `json:"search_list"`
+	}
+	if err := unmarshalArgs(req, &args); err != nil {
+		return toolError(err.Error())
+	}
+	resp, err := s.engine.Pathfind(args.Command, engine.PathfindParams{
+		SearchList: args.SearchList,
+	})
+	if err != nil {
+		return toolError(err.Error())
+	}
 	return toolResult(resp)
 }
 

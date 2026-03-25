@@ -109,8 +109,13 @@ func buildEngine() (*engine.Engine, error) {
 		return nil, err
 	}
 
+	allow := cfg.Allow
+	if cfg.IsPathReadable() {
+		allow = append(allow, config.PathAllowPatterns()...)
+	}
+
 	checker, err := accessctl.NewChecker(accessctl.CheckerParams{
-		Allow:     cfg.Allow,
+		Allow:     allow,
 		Deny:      cfg.Deny,
 		CredsDeny: cfg.CredsDeny,
 	})

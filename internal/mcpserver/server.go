@@ -33,7 +33,8 @@ func New(eng *engine.Engine) *Server {
 				"Use aifr_read to read files, aifr_cat to read multiple files with dividers, " +
 				"aifr_search to search content, aifr_list to list directories, " +
 				"aifr_find to find files, aifr_stat for metadata, aifr_refs for git refs, " +
-				"aifr_log for git history, and aifr_diff to compare files. " +
+				"aifr_log for git history, aifr_diff to compare files, and " +
+				"aifr_pathfind to find commands in PATH-like search lists. " +
 				"For aifr_cat, use format=\"text\" with divider=\"xml\" for token-efficient output.",
 		},
 	)

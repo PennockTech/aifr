@@ -24,6 +24,12 @@ creds_deny = [
   "**/*.nk",
 ]
 
+# Automatically add $PATH directories to the allow list so that AI agents
+# can discover available commands. Only allows direct children (non-recursive).
+# The sensitive-file blocklist still applies to files in PATH directories.
+# Default: true
+# path_readable = true
+
 # Git repositories to expose tree access for.
 # Each entry maps a name to a repo path.
 # If empty, git operations use the repo found by walking up from cwd.

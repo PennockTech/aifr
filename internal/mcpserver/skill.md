@@ -81,6 +81,14 @@ aifr diff HEAD~1:main.go main.go
 aifr diff main:lib.go feature:lib.go
 ```
 
+### Find commands in PATH
+```
+aifr pathfind git
+aifr pathfind 'git-*'
+aifr pathfind python3 --search-list 'envvar:PATH'
+aifr pathfind javac --search-list 'dirlist:/usr/lib/jvm/bin:/usr/bin'
+```
+
 ### Other
 ```
 aifr config          # show effective configuration
