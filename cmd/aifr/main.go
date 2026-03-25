@@ -9,6 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.pennock.tech/aifr/internal/accessctl"
+	"go.pennock.tech/aifr/internal/config"
+	"go.pennock.tech/aifr/internal/engine"
 	"go.pennock.tech/aifr/internal/version"
 	"go.pennock.tech/aifr/pkg/protocol"
 )
@@ -86,4 +89,34 @@ func writeJSON(v any) {
 		fmt.Fprintf(os.Stderr, "aifr: failed to encode JSON: %v\n", err)
 		os.Exit(protocol.ExitError)
 	}
+}
+
+// writeOutput writes the response in the selected format.
+func writeOutput(v any) {
+	// For now, always JSON. --format text will be added in polish phase.
+	writeJSON(v)
+}
+
+// loadConfig loads the effective configuration.
+func loadConfig() (*config.Config, error) {
+	return config.Load(config.LoadParams{ConfigPath: flagConfig})
+}
+
+// buildEngine constructs the engine from the current configuration.
+func buildEngine() (*engine.Engine, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	checker, err := accessctl.NewChecker(accessctl.CheckerParams{
+		Allow:     cfg.Allow,
+		Deny:      cfg.Deny,
+		CredsDeny: cfg.CredsDeny,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return engine.NewEngine(checker, cfg)
 }
