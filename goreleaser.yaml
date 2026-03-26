@@ -33,5 +33,53 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# Cosign keyless signing — signs the checksums file, which transitively
+# covers all release archives.  Requires id-token: write in the workflow.
+#
+# To verify:
+#   cosign verify-blob \
+#     --certificate checksums.txt.pem \
+#     --signature checksums.txt.sig \
+#     --certificate-identity-regexp 'https://github.com/PennockTech/aifr/' \
+#     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+#     checksums.txt
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    args:
+      - sign-blob
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+
+release:
+  footer: |
+    ## Verification
+
+    All artifacts are checksummed and the checksums file is signed with
+    [cosign](https://github.com/sigstore/cosign) keyless signing (GitHub OIDC).
+
+    ```sh
+    # Download the release assets, then verify:
+    cosign verify-blob \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      --certificate-identity-regexp 'https://github.com/PennockTech/aifr/' \
+      --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+      checksums.txt
+
+    sha256sum -c checksums.txt
+    ```
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
