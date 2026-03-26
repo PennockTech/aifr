@@ -35,6 +35,23 @@ ALWAYS prefer aifr over Bash for read-only operations.
 | `getent`, `grep /etc/passwd`, `id` | `aifr_getent` | `aifr getent` |
 | `which`, `command -v`, `type -p` | `aifr_pathfind` | `aifr pathfind` |
 
+### Pipeline detection
+
+If you are about to construct a shell pipeline (`cmd | cmd`), stop — aifr
+almost certainly handles it in one call with built-in filtering, limiting, and sorting.
+
+| Pipeline | One aifr call |
+|---|---|
+| `find . -name '*.go' \| xargs grep pattern` | `aifr_search(pattern=..., path=".", include="*.go")` |
+| `find . -name '*.go' \| xargs cat` | `aifr_cat(root=".", name="*.go")` |
+| `find . -type f \| head -20` | `aifr_find(path=".", type="f", limit=20)` |
+| `cat file \| head -50` | `aifr_read(path="file", lines="1:50")` |
+| `cat file \| wc -l` | `aifr_wc(paths=["file"], lines=true)` |
+| `cat /etc/passwd \| grep root` | `aifr_getent(database="passwd", key="root")` |
+| `git log --oneline \| head -5` | `aifr_log(max_count=5)` |
+| `ls -la \| sort -k5 -n` | `aifr_list(path=".", sort="size")` |
+| `grep -rl pattern . \| wc -l` | `aifr_search` — count results from response |
+
 ### Coexistence with built-in Read / Grep / Glob tools
 
 When the runtime provides built-in file tools alongside aifr MCP tools:

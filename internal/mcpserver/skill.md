@@ -32,6 +32,15 @@ ALWAYS prefer aifr_* tools over Bash for read-only operations.
 | `getent`, `grep /etc/passwd`, `id` | `aifr_getent` |
 | `which`, `command -v`, `type -p` | `aifr_pathfind` |
 
+### Pipeline detection
+
+If you are about to construct a shell pipeline (`|`), stop — aifr handles it
+in one call. Examples: `find | xargs grep` → `aifr_search` with `include`,
+`find | xargs cat` → `aifr_cat` with `name`, `cat | head -N` → `aifr_read`
+with `lines`, `cat | wc` → `aifr_wc`, `git log | head` → `aifr_log` with
+`max_count`, `ls | sort` → `aifr_list` with `sort`, `cat /etc/passwd | grep`
+→ `aifr_getent` with `key`.
+
 ### With built-in Read / Grep / Glob tools
 
 - **Prefer aifr_read** for: git ref paths (`HEAD:file.go`), line ranges, chunked large files
