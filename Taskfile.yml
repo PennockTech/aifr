@@ -179,10 +179,98 @@ tasks:
       sed -i.bak -Ee s'/^(const[[:space:]]+HARDCODED_VERSION[[:space:]]+=[[:space:]]+")[^"]+"/\1'"$nv"'"/' "$version_file"
       rm -f "${version_file}.bak"
 
+  release:preflight:
+    desc: Verify we're on main and up-to-date with all remotes
+    internal: true
+    silent: true
+    env:
+      task_exe: "{{.TASK_EXE}}"
+      task_name: "{{.TASK}}"
+    cmd: |-2
+      branch="$(git rev-parse --abbrev-ref HEAD)"
+
+      # FUTURE: also allow release/v* branches (see release:commits-and-tag for full design notes)
+      if [[ "$branch" != "main" ]]; then
+        echo >&2 "${task_exe}: ${task_name}: must be on 'main', currently on ${branch@Q}"
+        exit 1
+      fi
+
+      if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo >&2 "${task_exe}: ${task_name}: working tree or index is dirty — commit or stash first"
+        exit 1
+      fi
+
+      git fetch --all --quiet
+
+      local_sha="$(git rev-parse HEAD)"
+      stale=()
+      while IFS= read -r remote; do
+        remote_ref="refs/remotes/${remote}/${branch}"
+        if ! git rev-parse --verify "$remote_ref" >/dev/null 2>&1; then
+          continue
+        fi
+        remote_sha="$(git rev-parse "$remote_ref")"
+        if [[ "$remote_sha" == "$local_sha" ]]; then
+          continue
+        fi
+        # Remote is strictly behind us — that's fine (we have unpushed commits, or are about to)
+        if git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+          continue
+        fi
+        stale+=("${remote}/${branch} (${remote_sha::12})")
+      done < <(git remote)
+
+      if [[ ${#stale[@]} -gt 0 ]]; then
+        echo >&2 "${task_exe}: ${task_name}: local ${branch} is behind or has diverged from:"
+        printf >&2 '  - %s\n' "${stale[@]}"
+        echo >&2 "Pull or rebase before releasing."
+        exit 1
+      fi
+
   release:commits-and-tag:
-    # Deliberately DOES NOT PUSH: a human must review for sanity
+    # Deliberately DOES NOT PUSH: a human must review for sanity.
+    #
+    # CURRENT LIMITATION: assumes release from main.
+    # The -dev bump commit is made on the current branch, which is correct for main
+    # but wrong for release branches.
+    #
+    # FUTURE: support release/v* branches.  When on a release branch:
+    #   - Do bump + tag only (no -dev bump on the release branch)
+    #   - After tagging, print instructions for the merge-to-main step
+    #   - The preflight check should also validate the release branch is up-to-date
+    #
+    # After tagging on a release branch, the tag may need to become an ancestor
+    # of main so that git-describe on main produces sane output.  But ONLY if the
+    # tag is newer than any tag already reachable from main.  Two cases:
+    #
+    # (a) Main already has a newer tag (e.g., main is at v2.3.0-dev, release
+    #     branch just tagged v1.0.1):  No merge needed.  git-describe on main
+    #     already uses the newer tag.  Just sanity-check that main is ahead.
+    #
+    # (b) The release tag is newer than main's latest tag (e.g., initial release
+    #     from a branch just cut from main):  Use a single synthetic merge commit
+    #     that records the tag as an ancestor AND bumps main to -dev:
+    #       tag="$(git describe)"
+    #       next_ver="$(convco version --patch)-dev"
+    #       git checkout main
+    #       git fetch origin main
+    #       git merge --ff-only origin/main  # abort if main has diverged
+    #       git diff --quiet && git diff --cached --quiet \
+    #         || { echo >&2 "main is dirty"; exit 1; }
+    #       VERSION_OVERRIDE="$next_ver" task next-version:write
+    #       git add internal/version/version.go
+    #       main_tree="$(git write-tree)"
+    #       c="$(git commit-tree "$main_tree" -p HEAD -p "$tag" \
+    #            -m "merge: record $tag as ancestor & bump to $next_ver")"
+    #       git merge --ff-only "$c"
+    #     The merge commit's tree contains main's content with the -dev bump,
+    #     while its parents link both main and the tag.  One commit, no conflicts,
+    #     no misleading diffs.  Uses git plumbing — needs good comments.
+    #
+    # Defer implementation until we have experience with at least one release branch.
+    #
     desc: commit a version bump, tag, commit version bump
-    deps: [_have_cargo_tool:convco]
+    deps: [_have_cargo_tool:convco, release:preflight]
     env:
       release_version:
         sh: task next-version:show
