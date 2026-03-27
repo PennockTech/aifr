@@ -7,6 +7,16 @@ vars:
   release_tag_message_prefix: aifr version
   version_embedded_file: internal/version/version.go
 
+env:
+  # Allow a version override to come before the command as an env override,
+  # OR to come after the command as a var-assignment.
+  #
+  # We do this at the top-level because `release:commits-and-tag` uses a
+  # sub-process to invoke us, to get the version into a shell variable, and we
+  # need the CLI assignment to propagate into the environment.
+  # Note though that we do need to explicitly unset this for the _second_ invocation.
+  VERSION_OVERRIDE: "{{.VERSION_OVERRIDE}}"
+
 tasks:
   default:
     deps: [help]
@@ -128,9 +138,6 @@ tasks:
     env:
       task_exe: "{{.TASK_EXE}}"
       task_name: "{{.TASK}}"
-      # allow the version to come before the command as an env override,
-      # OR to come after the command as a var-assignment
-      VERSION_OVERRIDE: "{{.VERSION_OVERRIDE}}"
     cmd: |-2
       shopt -s extglob
       if [[ -n "${VERSION_OVERRIDE:-}" ]]; then
@@ -187,7 +194,9 @@ tasks:
       - 'git commit -o "$version_file" -m "chore: bump hard-coded version to ${release_version}"'
       - 'git tag -s -m "${message_prefix} ${release_version#v}" -e "$release_version"'
       - task: next-version:write
-      - 'git commit -o "$version_file" -m "chore: bump hard-coded version to $(task next-version:show)"'
+        vars:
+          VERSION_OVERRIDE: ""
+      - 'git commit -o "$version_file" -m "chore: bump hard-coded version to $(env VERSION_OVERRIDE="" task next-version:show)"'
 
   _have_cargo_tool:*:  # shim for when the binary name == crate name
     internal: true
