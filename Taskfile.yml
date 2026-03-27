@@ -128,7 +128,19 @@ tasks:
     env:
       task_exe: "{{.TASK_EXE}}"
       task_name: "{{.TASK}}"
+      # allow the version to come before the command as an env override,
+      # OR to come after the command as a var-assignment
+      VERSION_OVERRIDE: "{{.VERSION_OVERRIDE}}"
     cmd: |-2
+      shopt -s extglob
+      if [[ -n "${VERSION_OVERRIDE:-}" ]]; then
+        case "$VERSION_OVERRIDE" in
+          ( v+([0-9]).+([0-9]).+([0-9])?(-*) ) printf '%s\n'  "$VERSION_OVERRIDE" ;;
+          (  +([0-9]).+([0-9]).+([0-9])?(-*) ) printf '%s\n' "v$VERSION_OVERRIDE" ;;
+          *) echo >&2 "${task_exe}: ${task_name}: REJECTING dubious VERSION_OVERRIDE=${VERSION_OVERRIDE@Q}"; exit 65 ;;
+        esac
+        exit 0
+      fi
       old="$(convco version --pp)"
       pure="$(convco version --pp --bump)"
       if [[ "$old" != "$pure" ]]; then
