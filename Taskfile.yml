@@ -93,7 +93,7 @@ tasks:
   release:snapshot:
     desc: Create a snapshot release
     cmds:
-      - goreleaser release --snapshot --clean
+      - goreleaser release --snapshot --clean --skip=sign
 
   ci:check-github:
     desc: Validate GitHub Actions workflows with zizmor

@@ -35,7 +35,7 @@ archives:
     wrap_in_directory: true
     files:
       - src: skills/aifr/SKILL.md
-        dst: skills/aifr
+      - src: configs/aifr.example.toml
       - src: LICENSE
       - src: README.md
 
