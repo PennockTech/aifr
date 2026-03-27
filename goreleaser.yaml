@@ -101,7 +101,7 @@ release:
       --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
       checksums.txt
 
-    sha256sum -c checksums.txt
+    sha256sum --ignore-missing -c checksums.txt
     ```
 
 changelog:
