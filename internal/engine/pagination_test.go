@@ -291,7 +291,7 @@ func TestLogCompleteField(t *testing.T) {
 	eng := newTestEngine(t, dir)
 
 	// Request fewer commits than exist.
-	resp, err := eng.Log("", "HEAD", LogParams{MaxCount: 2})
+	resp, err := eng.Log(dir, "HEAD", LogParams{MaxCount: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestLogCompleteField(t *testing.T) {
 	}
 
 	// Request more commits than exist.
-	resp2, err := eng.Log("", "HEAD", LogParams{MaxCount: 100})
+	resp2, err := eng.Log(dir, "HEAD", LogParams{MaxCount: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
