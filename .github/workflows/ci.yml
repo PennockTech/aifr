@@ -12,7 +12,12 @@
 #   - go-task/setup-task
 
 name: CI
-run-name: "CI: ${{ github.head_ref || github.ref_name }}"
+# For release, I want the tag in there.
+# For CI, ideally I'd have the branch and then the commit message first line,
+# but that's amongst the things GitHub doesn't let you do cleanly via the
+# template language.
+# For now, accept the default run-name for CI jobs.
+# run-name: "CI: ${{ github.head_ref || github.ref_name }}"
 
 on:
   push:
