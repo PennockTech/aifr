@@ -103,7 +103,8 @@ tasks:
           pinact is not installed.
           Install via: go install github.com/suzuki-shunsuke/pinact/cmd/pinact@latest
     cmds:
-      - pinact run
+      # See explanation below for when we're bumping the versions.
+      - pinact run --min-age 4
 
   ci:pin-bump-actions:
     desc: Bump pins of GitHub Actions
@@ -113,6 +114,11 @@ tasks:
           pinact is not installed.
           Install via: go install github.com/suzuki-shunsuke/pinact/cmd/pinact@latest
     cmds:
+      # The minimum age is a cool-down defense against supply-chain attacks.
+      # We can always manually bump something explicitly if we know we must get a particular fix.
+      # Background reading:
+      #  * <https://blog.yossarian.net/2025/11/21/We-should-all-be-using-dependency-cooldowns>
+      #  * <https://nesbitt.io/2026/03/04/package-managers-need-to-cool-down.html>
       - pinact run --min-age 4 --update
 
   next-version:show:
