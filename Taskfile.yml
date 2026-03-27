@@ -4,12 +4,20 @@ version: "3"
 
 vars:
   BINARY: aifr
+  release_tag_message_prefix: aifr version
+  version_embedded_file: internal/version/version.go
 
 tasks:
   default:
-    desc: Build the binary
+    deps: [help]
+
+  help:
+    silent: true
     cmds:
-      - task: build
+      - |
+        cat <<'EOHELP'
+        There are various commands available, see `task -l` for more details
+        EOHELP
 
   build:
     desc: Build the aifr binary
@@ -76,3 +84,129 @@ tasks:
     desc: Create a snapshot release
     cmds:
       - goreleaser release --snapshot --clean
+
+  ci:check-github:
+    desc: Validate GitHub Actions workflows with zizmor
+    preconditions:
+      - sh: command -v zizmor
+        msg: >-
+          zizmor is not installed.
+          Install via: pip install zizmor  (or: cargo install zizmor)
+    cmds:
+      - zizmor --format plain .github/workflows/
+
+  ci:pin-actions:
+    desc: Pin GitHub Actions to exact commit SHAs using pinact
+    preconditions:
+      - sh: command -v pinact
+        msg: >-
+          pinact is not installed.
+          Install via: go install github.com/suzuki-shunsuke/pinact/cmd/pinact@latest
+    cmds:
+      # See explanation below for when we're bumping the versions.
+      - pinact run --min-age 4
+
+  ci:pin-bump-actions:
+    desc: Bump pins of GitHub Actions
+    preconditions:
+      - sh: command -v pinact
+        msg: >-
+          pinact is not installed.
+          Install via: go install github.com/suzuki-shunsuke/pinact/cmd/pinact@latest
+    cmds:
+      # The minimum age is a cool-down defense against supply-chain attacks.
+      # We can always manually bump something explicitly if we know we must get a particular fix.
+      # Background reading:
+      #  * <https://blog.yossarian.net/2025/11/21/We-should-all-be-using-dependency-cooldowns>
+      #  * <https://nesbitt.io/2026/03/04/package-managers-need-to-cool-down.html>
+      - pinact run --min-age 4 --update
+
+  next-version:show:
+    desc: Show the next version to use
+    silent: true
+    deps: [_have_cargo_tool:convco]
+    env:
+      task_exe: "{{.TASK_EXE}}"
+      task_name: "{{.TASK}}"
+      # allow the version to come before the command as an env override,
+      # OR to come after the command as a var-assignment
+      VERSION_OVERRIDE: "{{.VERSION_OVERRIDE}}"
+    cmd: |-2
+      shopt -s extglob
+      if [[ -n "${VERSION_OVERRIDE:-}" ]]; then
+        case "$VERSION_OVERRIDE" in
+          ( v+([0-9]).+([0-9]).+([0-9])?(-*) ) printf '%s\n'  "$VERSION_OVERRIDE" ;;
+          (  +([0-9]).+([0-9]).+([0-9])?(-*) ) printf '%s\n' "v$VERSION_OVERRIDE" ;;
+          *) echo >&2 "${task_exe}: ${task_name}: REJECTING dubious VERSION_OVERRIDE=${VERSION_OVERRIDE@Q}"; exit 65 ;;
+        esac
+        exit 0
+      fi
+      old="$(convco version --pp)"
+      pure="$(convco version --pp --bump)"
+      if [[ "$old" != "$pure" ]]; then
+        printf '%s\n' "$pure"
+        exit 0
+      fi
+      if convco check "${old}..HEAD" >/dev/null; then
+        # all commits were conventional
+        current="$(git describe)"
+        if [[ "$current" == "$old" ]]; then
+          # We are at the release, we bump to -dev
+          echo "$(convco version --pp --patch)-dev"
+        else
+          echo >&2 "${task_exe}: ${task_name}: error: ${old@Q}..${current@Q} has commits and were all conventional but failed to get a version bump"
+          exit 1
+        fi
+      else
+        # I have not been behaving
+        convco version --pp --patch
+      fi
+
+  next-version:write:
+    desc: update repo_version.go with the next version
+    deps: [_have_cargo_tool:convco]
+    env:
+      version_file: "{{.version_embedded_file}}"
+    cmd: |-2
+      nv="$(task next-version:show)"
+      sed -i.bak -Ee s'/^(const[[:space:]]+HARDCODED_VERSION[[:space:]]+=[[:space:]]+")[^"]+"/\1'"$nv"'"/' "$version_file"
+      rm -f "${version_file}.bak"
+
+  release:commits-and-tag:
+    # Deliberately DOES NOT PUSH: a human must review for sanity
+    desc: commit a version bump, tag, commit version bump
+    deps: [_have_cargo_tool:convco]
+    env:
+      release_version:
+        sh: task next-version:show
+      message_prefix: "{{.release_tag_message_prefix}}"
+      version_file: "{{.version_embedded_file}}"
+    cmds:
+      - '[[ -n "${message_prefix:-}" ]] || { echo >&2 "missing message_prefix, Taskfile problem"; exit 70; }'
+      - task: next-version:write
+      - 'git commit -o "$version_file" -m "chore: bump hard-coded version to ${release_version}"'
+      - 'git tag -s -m "${message_prefix} ${release_version#v}" -e "$release_version"'
+      - task: next-version:write
+      - 'git commit -o "$version_file" -m "chore: bump hard-coded version to $(task next-version:show)"'
+
+  _have_cargo_tool:*:  # shim for when the binary name == crate name
+    internal: true
+    silent: true
+    cmds:
+      - task: "_have_cargo_tool_crate:{{index .MATCH 0}}:{{index .MATCH 0}}"
+
+  _have_cargo_tool_crate:*:*:  # wildcards are: binary name, then crate
+    internal: true
+    silent: true
+    # if: block seems to not succeed when there's a templated index in there
+    env:
+      task_exe: "{{.TASK_EXE}}"
+      want_bin: "{{index .MATCH 0}}"
+      crate: "{{index .MATCH 1}}"
+    cmd: |-2
+      if command -v "$want_bin" >/dev/null 2>&1; then
+        exit 0  # we have it
+      fi
+      echo >&2 "${task_exe}: missing tool '${want_bin}', consider:  cargo install --locked ${crate@Q}"
+      exit 69 # EX_UNAVAILABLE
+
