@@ -25,6 +25,7 @@ type SearchParams struct {
 	MaxMatches int    // 0 = use default
 	Include    string // glob for files to include
 	Exclude    string // glob for files to exclude
+	Offset     int    // skip first N matches (for pagination)
 }
 
 // Search finds content matches within a directory tree.
@@ -85,6 +86,20 @@ func (e *Engine) Search(pattern, path string, params SearchParams) (*protocol.Se
 	resp.TotalMatches = len(resp.Matches)
 	resp.Truncated = resp.TotalMatches >= maxMatches
 	resp.Complete = !resp.Truncated
+
+	if !resp.Complete {
+		tok, err := e.EncodeListContinuation(&ListContinuationToken{
+			Tool:   "search",
+			Path:   resolved,
+			Offset: params.Offset + len(resp.Matches),
+			Limit:  maxMatches,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp.Continuation = tok
+	}
+
 	return resp, nil
 }
 

@@ -94,13 +94,14 @@ func toolList() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path":    map[string]any{"type": "string", "description": "Directory path or git ref:path"},
-				"depth":   map[string]any{"type": "integer", "description": "Recursion depth (0=immediate, -1=unlimited)", "default": 0},
-				"pattern": map[string]any{"type": "string", "description": "Glob filter on entry name"},
-				"type":    map[string]any{"type": "string", "description": "Entry type filter: f=file, d=dir, l=symlink"},
-				"sort":    map[string]any{"type": "string", "description": "Sort order: name, path, size, mtime, version"},
-				"desc":    map[string]any{"type": "boolean", "description": "Sort descending"},
-				"limit":   map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
+				"path":         map[string]any{"type": "string", "description": "Directory path or git ref:path"},
+				"depth":        map[string]any{"type": "integer", "description": "Recursion depth (0=immediate, -1=unlimited)", "default": 0},
+				"pattern":      map[string]any{"type": "string", "description": "Glob filter on entry name"},
+				"type":         map[string]any{"type": "string", "description": "Entry type filter: f=file, d=dir, l=symlink"},
+				"sort":         map[string]any{"type": "string", "description": "Sort order: name, path, size, mtime, version"},
+				"desc":         map[string]any{"type": "boolean", "description": "Sort descending"},
+				"limit":        map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
+				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous list"},
 			},
 			"required": []string{"path"},
 		}),
@@ -115,14 +116,15 @@ Returns structured matches with file, line, column, and optional context lines.`
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"pattern":     map[string]any{"type": "string", "description": "Search pattern (RE2 regexp by default)"},
-				"path":        map[string]any{"type": "string", "description": "Directory or file to search"},
-				"regexp":      map[string]any{"type": "boolean", "description": "Treat pattern as regexp (default true)", "default": true},
-				"ignore_case": map[string]any{"type": "boolean", "description": "Case-insensitive matching"},
-				"context":     map[string]any{"type": "integer", "description": "Context lines before/after match"},
-				"max_matches": map[string]any{"type": "integer", "description": "Max matches (default 500)"},
-				"include":     map[string]any{"type": "string", "description": "Glob for files to include"},
-				"exclude":     map[string]any{"type": "string", "description": "Glob for files to exclude"},
+				"pattern":      map[string]any{"type": "string", "description": "Search pattern (RE2 regexp by default)"},
+				"path":         map[string]any{"type": "string", "description": "Directory or file to search"},
+				"regexp":       map[string]any{"type": "boolean", "description": "Treat pattern as regexp (default true)", "default": true},
+				"ignore_case":  map[string]any{"type": "boolean", "description": "Case-insensitive matching"},
+				"context":      map[string]any{"type": "integer", "description": "Context lines before/after match"},
+				"max_matches":  map[string]any{"type": "integer", "description": "Max matches (default 500)"},
+				"include":      map[string]any{"type": "string", "description": "Glob for files to include"},
+				"exclude":      map[string]any{"type": "string", "description": "Glob for files to exclude"},
+				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous search"},
 			},
 			"required": []string{"pattern", "path"},
 		}),
@@ -136,16 +138,17 @@ func toolFind() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path":       map[string]any{"type": "string", "description": "Directory to search"},
-				"name":       map[string]any{"type": "string", "description": "Glob on filename"},
-				"type":       map[string]any{"type": "string", "description": "Entry type: f=file, d=dir, l=symlink"},
-				"max_depth":  map[string]any{"type": "integer", "description": "Max recursion depth (-1=unlimited)", "default": -1},
-				"min_size":   map[string]any{"type": "integer", "description": "Minimum file size in bytes"},
-				"max_size":   map[string]any{"type": "integer", "description": "Maximum file size in bytes"},
-				"newer_than": map[string]any{"type": "string", "description": "Duration e.g. '24h', '7d'"},
-				"sort":       map[string]any{"type": "string", "description": "Sort order: name, path, size, version"},
-				"desc":       map[string]any{"type": "boolean", "description": "Sort descending"},
-				"limit":      map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
+				"path":         map[string]any{"type": "string", "description": "Directory to search"},
+				"name":         map[string]any{"type": "string", "description": "Glob on filename"},
+				"type":         map[string]any{"type": "string", "description": "Entry type: f=file, d=dir, l=symlink"},
+				"max_depth":    map[string]any{"type": "integer", "description": "Max recursion depth (-1=unlimited)", "default": -1},
+				"min_size":     map[string]any{"type": "integer", "description": "Minimum file size in bytes"},
+				"max_size":     map[string]any{"type": "integer", "description": "Maximum file size in bytes"},
+				"newer_than":   map[string]any{"type": "string", "description": "Duration e.g. '24h', '7d'"},
+				"sort":         map[string]any{"type": "string", "description": "Sort order: name, path, size, version"},
+				"desc":         map[string]any{"type": "boolean", "description": "Sort descending"},
+				"limit":        map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
+				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous find"},
 			},
 			"required": []string{"path"},
 		}),
@@ -175,9 +178,10 @@ func toolLog() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"repo":      map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
-				"ref":       map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
-				"max_count": map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
+				"repo":         map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
+				"ref":          map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
+				"max_count":    map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
+				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous log"},
 			},
 		}),
 	}
@@ -260,13 +264,14 @@ func (s *Server) handleStat(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 
 func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Path    string `json:"path"`
-		Depth   int    `json:"depth"`
-		Pattern string `json:"pattern"`
-		Type    string `json:"type"`
-		Sort    string `json:"sort"`
-		Desc    bool   `json:"desc"`
-		Limit   int    `json:"limit"`
+		Path         string `json:"path"`
+		Depth        int    `json:"depth"`
+		Pattern      string `json:"pattern"`
+		Type         string `json:"type"`
+		Sort         string `json:"sort"`
+		Desc         bool   `json:"desc"`
+		Limit        int    `json:"limit"`
+		Continuation string `json:"continuation"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -279,14 +284,27 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		}
 		return toolResult(resp)
 	}
-	resp, err := s.engine.List(args.Path, engine.ListParams{
+
+	params := engine.ListParams{
 		Depth:      args.Depth,
 		Pattern:    args.Pattern,
 		Type:       args.Type,
 		Sort:       engine.SortOrder(args.Sort),
 		Descending: args.Desc,
 		Limit:      args.Limit,
-	})
+	}
+	if args.Continuation != "" {
+		tok, err := s.decodeContinuation(args.Continuation, "list")
+		if err != nil {
+			return toolError(err.Error())
+		}
+		params.Offset = tok.Offset
+		if tok.Limit > 0 && params.Limit == 0 {
+			params.Limit = tok.Limit
+		}
+	}
+
+	resp, err := s.engine.List(args.Path, params)
 	if err != nil {
 		return toolError(err.Error())
 	}
@@ -295,14 +313,15 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 
 func (s *Server) handleSearch(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Pattern    string `json:"pattern"`
-		Path       string `json:"path"`
-		Regexp     *bool  `json:"regexp"`
-		IgnoreCase bool   `json:"ignore_case"`
-		Context    int    `json:"context"`
-		MaxMatches int    `json:"max_matches"`
-		Include    string `json:"include"`
-		Exclude    string `json:"exclude"`
+		Pattern      string `json:"pattern"`
+		Path         string `json:"path"`
+		Regexp       *bool  `json:"regexp"`
+		IgnoreCase   bool   `json:"ignore_case"`
+		Context      int    `json:"context"`
+		MaxMatches   int    `json:"max_matches"`
+		Include      string `json:"include"`
+		Exclude      string `json:"exclude"`
+		Continuation string `json:"continuation"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -313,14 +332,26 @@ func (s *Server) handleSearch(_ context.Context, req *mcp.CallToolRequest) (*mcp
 		isRegexp = *args.Regexp
 	}
 
-	resp, err := s.engine.Search(args.Pattern, args.Path, engine.SearchParams{
+	params := engine.SearchParams{
 		IsRegexp:   isRegexp,
 		IgnoreCase: args.IgnoreCase,
 		Context:    args.Context,
 		MaxMatches: args.MaxMatches,
 		Include:    args.Include,
 		Exclude:    args.Exclude,
-	})
+	}
+	if args.Continuation != "" {
+		tok, err := s.decodeContinuation(args.Continuation, "search")
+		if err != nil {
+			return toolError(err.Error())
+		}
+		params.Offset = tok.Offset
+		if tok.Limit > 0 && params.MaxMatches == 0 {
+			params.MaxMatches = tok.Limit
+		}
+	}
+
+	resp, err := s.engine.Search(args.Pattern, args.Path, params)
 	if err != nil {
 		return toolError(err.Error())
 	}
@@ -329,16 +360,17 @@ func (s *Server) handleSearch(_ context.Context, req *mcp.CallToolRequest) (*mcp
 
 func (s *Server) handleFind(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Path      string `json:"path"`
-		Name      string `json:"name"`
-		Type      string `json:"type"`
-		MaxDepth  int    `json:"max_depth"`
-		MinSize   int64  `json:"min_size"`
-		MaxSize   int64  `json:"max_size"`
-		NewerThan string `json:"newer_than"`
-		Sort      string `json:"sort"`
-		Desc      bool   `json:"desc"`
-		Limit     int    `json:"limit"`
+		Path         string `json:"path"`
+		Name         string `json:"name"`
+		Type         string `json:"type"`
+		MaxDepth     int    `json:"max_depth"`
+		MinSize      int64  `json:"min_size"`
+		MaxSize      int64  `json:"max_size"`
+		NewerThan    string `json:"newer_than"`
+		Sort         string `json:"sort"`
+		Desc         bool   `json:"desc"`
+		Limit        int    `json:"limit"`
+		Continuation string `json:"continuation"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -353,6 +385,16 @@ func (s *Server) handleFind(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		Sort:       engine.SortOrder(args.Sort),
 		Descending: args.Desc,
 		Limit:      args.Limit,
+	}
+	if args.Continuation != "" {
+		tok, err := s.decodeContinuation(args.Continuation, "find")
+		if err != nil {
+			return toolError(err.Error())
+		}
+		params.Offset = tok.Offset
+		if tok.Limit > 0 && params.Limit == 0 {
+			params.Limit = tok.Limit
+		}
 	}
 
 	if args.NewerThan != "" {
@@ -389,18 +431,44 @@ func (s *Server) handleRefs(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 
 func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Repo     string `json:"repo"`
-		Ref      string `json:"ref"`
-		MaxCount int    `json:"max_count"`
+		Repo         string `json:"repo"`
+		Ref          string `json:"ref"`
+		MaxCount     int    `json:"max_count"`
+		Continuation string `json:"continuation"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
-	resp, err := s.engine.Log(args.Repo, args.Ref, args.MaxCount)
+
+	params := engine.LogParams{MaxCount: args.MaxCount}
+	if args.Continuation != "" {
+		tok, err := s.decodeContinuation(args.Continuation, "log")
+		if err != nil {
+			return toolError(err.Error())
+		}
+		params.StartHash = tok.Hash
+		if tok.Limit > 0 {
+			params.MaxCount = tok.Limit
+		}
+	}
+
+	resp, err := s.engine.Log(args.Repo, args.Ref, params)
 	if err != nil {
 		return toolError(err.Error())
 	}
 	return toolResult(resp)
+}
+
+// decodeContinuation is a helper to decode and validate a list continuation token.
+func (s *Server) decodeContinuation(token, expectedTool string) (*engine.ListContinuationToken, error) {
+	tok, err := s.engine.DecodeListContinuation(token)
+	if err != nil {
+		return nil, err
+	}
+	if tok.Tool != expectedTool {
+		return nil, fmt.Errorf("continuation token is not for %s", expectedTool)
+	}
+	return tok, nil
 }
 
 func (s *Server) handleDiff(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -548,9 +616,10 @@ func toolReflog() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"ref":       map[string]any{"type": "string", "description": "Git ref to show reflog for (default: HEAD). Can be a branch name."},
-				"repo":      map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
-				"max_count": map[string]any{"type": "integer", "description": "Maximum entries to return (default: 50)"},
+				"ref":          map[string]any{"type": "string", "description": "Git ref to show reflog for (default: HEAD). Can be a branch name."},
+				"repo":         map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
+				"max_count":    map[string]any{"type": "integer", "description": "Maximum entries to return (default: 50)"},
+				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous reflog"},
 			},
 		}),
 	}
@@ -558,16 +627,28 @@ func toolReflog() *mcp.Tool {
 
 func (s *Server) handleReflog(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Ref      string `json:"ref"`
-		Repo     string `json:"repo"`
-		MaxCount int    `json:"max_count"`
+		Ref          string `json:"ref"`
+		Repo         string `json:"repo"`
+		MaxCount     int    `json:"max_count"`
+		Continuation string `json:"continuation"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
-	resp, err := s.engine.Reflog(args.Repo, args.Ref, engine.ReflogParams{
-		MaxCount: args.MaxCount,
-	})
+
+	params := engine.ReflogParams{MaxCount: args.MaxCount}
+	if args.Continuation != "" {
+		tok, err := s.decodeContinuation(args.Continuation, "reflog")
+		if err != nil {
+			return toolError(err.Error())
+		}
+		params.Offset = tok.Offset
+		if tok.Limit > 0 && params.MaxCount == 0 {
+			params.MaxCount = tok.Limit
+		}
+	}
+
+	resp, err := s.engine.Reflog(args.Repo, args.Ref, params)
 	if err != nil {
 		return toolError(err.Error())
 	}
@@ -583,8 +664,9 @@ func toolStashList() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"repo":      map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
-				"max_count": map[string]any{"type": "integer", "description": "Maximum stash entries to return (default: 50)"},
+				"repo":         map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
+				"max_count":    map[string]any{"type": "integer", "description": "Maximum stash entries to return (default: 50)"},
+				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous stash list"},
 			},
 		}),
 	}
@@ -592,15 +674,27 @@ func toolStashList() *mcp.Tool {
 
 func (s *Server) handleStashList(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Repo     string `json:"repo"`
-		MaxCount int    `json:"max_count"`
+		Repo         string `json:"repo"`
+		MaxCount     int    `json:"max_count"`
+		Continuation string `json:"continuation"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
-	resp, err := s.engine.StashList(args.Repo, engine.ReflogParams{
-		MaxCount: args.MaxCount,
-	})
+
+	params := engine.ReflogParams{MaxCount: args.MaxCount}
+	if args.Continuation != "" {
+		tok, err := s.decodeContinuation(args.Continuation, "stash_list")
+		if err != nil {
+			return toolError(err.Error())
+		}
+		params.Offset = tok.Offset
+		if tok.Limit > 0 && params.MaxCount == 0 {
+			params.MaxCount = tok.Limit
+		}
+	}
+
+	resp, err := s.engine.StashList(args.Repo, params)
 	if err != nil {
 		return toolError(err.Error())
 	}

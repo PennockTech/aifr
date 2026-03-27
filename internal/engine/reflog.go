@@ -16,6 +16,7 @@ import (
 // ReflogParams controls reflog queries.
 type ReflogParams struct {
 	MaxCount int // 0 = default (50)
+	Offset   int // skip first N entries (for pagination)
 }
 
 // Reflog reads the reflog for a given ref in a repo.
@@ -35,18 +36,46 @@ func (e *Engine) Reflog(repoName, ref string, params ReflogParams) (*protocol.Re
 	}
 
 	logPath := reflogPath(repoPath, ref)
-	entries, err := parseReflogFile(logPath, maxCount)
+	entries, total, err := parseReflogFile(logPath, params.Offset+maxCount)
 	if err != nil {
 		return nil, fmt.Errorf("reading reflog for %q: %w", ref, err)
 	}
 
-	return &protocol.ReflogResponse{
+	// Apply offset.
+	if params.Offset > 0 && params.Offset < len(entries) {
+		entries = entries[params.Offset:]
+	} else if params.Offset >= len(entries) && params.Offset > 0 {
+		entries = nil
+	}
+
+	// Apply limit.
+	if len(entries) > maxCount {
+		entries = entries[:maxCount]
+	}
+
+	complete := params.Offset+len(entries) >= total
+	resp := &protocol.ReflogResponse{
 		Repo:     repoName,
 		Ref:      ref,
 		Entries:  entries,
-		Total:    len(entries),
-		Complete: true,
-	}, nil
+		Total:    total,
+		Complete: complete,
+	}
+
+	if !complete {
+		tok, tokErr := e.EncodeListContinuation(&ListContinuationToken{
+			Tool:   "reflog",
+			Path:   repoName,
+			Offset: params.Offset + len(entries),
+			Limit:  maxCount,
+		})
+		if tokErr != nil {
+			return nil, tokErr
+		}
+		resp.Continuation = tok
+	}
+
+	return resp, nil
 }
 
 // StashList reads the stash reflog (refs/stash).
@@ -62,7 +91,7 @@ func (e *Engine) StashList(repoName string, params ReflogParams) (*protocol.Refl
 	}
 
 	logPath := reflogPath(repoPath, "refs/stash")
-	entries, err := parseReflogFile(logPath, maxCount)
+	entries, total, err := parseReflogFile(logPath, params.Offset+maxCount)
 	if err != nil {
 		// No stash file = no stashes. Not an error.
 		if os.IsNotExist(err) {
@@ -77,13 +106,41 @@ func (e *Engine) StashList(repoName string, params ReflogParams) (*protocol.Refl
 		return nil, fmt.Errorf("reading stash list: %w", err)
 	}
 
-	return &protocol.ReflogResponse{
+	// Apply offset.
+	if params.Offset > 0 && params.Offset < len(entries) {
+		entries = entries[params.Offset:]
+	} else if params.Offset >= len(entries) && params.Offset > 0 {
+		entries = nil
+	}
+
+	// Apply limit.
+	if len(entries) > maxCount {
+		entries = entries[:maxCount]
+	}
+
+	complete := params.Offset+len(entries) >= total
+	resp := &protocol.ReflogResponse{
 		Repo:     repoName,
 		Ref:      "refs/stash",
 		Entries:  entries,
-		Total:    len(entries),
-		Complete: true,
-	}, nil
+		Total:    total,
+		Complete: complete,
+	}
+
+	if !complete {
+		tok, tokErr := e.EncodeListContinuation(&ListContinuationToken{
+			Tool:   "stash_list",
+			Path:   repoName,
+			Offset: params.Offset + len(entries),
+			Limit:  maxCount,
+		})
+		if tokErr != nil {
+			return nil, tokErr
+		}
+		resp.Continuation = tok
+	}
+
+	return resp, nil
 }
 
 // reflogPath returns the filesystem path to a reflog file.
@@ -110,10 +167,11 @@ func reflogPath(repoPath, ref string) string {
 // parseReflogFile reads and parses a git reflog file.
 // Reflog format: <old-hash> <new-hash> <name> <<email>> <unix-ts> <tz> \t<action>
 // Entries are in chronological order in the file; we reverse to show newest first.
-func parseReflogFile(path string, maxCount int) ([]protocol.ReflogEntry, error) {
+// Returns the parsed entries, the total number of valid entries in the file, and any error.
+func parseReflogFile(path string, maxCount int) ([]protocol.ReflogEntry, int, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 
@@ -124,19 +182,23 @@ func parseReflogFile(path string, maxCount int) ([]protocol.ReflogEntry, error) 
 		rawLines = append(rawLines, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	// Reverse to newest-first.
+	// Count total valid entries and collect up to maxCount (newest-first).
 	var entries []protocol.ReflogEntry
-	for i := len(rawLines) - 1; i >= 0 && len(entries) < maxCount; i-- {
+	totalValid := 0
+	for i := len(rawLines) - 1; i >= 0; i-- {
 		entry, ok := parseReflogLine(rawLines[i], len(rawLines)-1-i)
 		if ok {
-			entries = append(entries, entry)
+			totalValid++
+			if len(entries) < maxCount {
+				entries = append(entries, entry)
+			}
 		}
 	}
 
-	return entries, nil
+	return entries, totalValid, nil
 }
 
 // parseReflogLine parses a single reflog line.

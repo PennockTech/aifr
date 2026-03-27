@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"go.pennock.tech/aifr/internal/engine"
 )
 
 var (
@@ -44,7 +46,7 @@ var logCmd = &cobra.Command{
 			}
 		}
 
-		resp, err := eng.Log(repoName, ref, logMaxCount)
+		resp, err := eng.Log(repoName, ref, engine.LogParams{MaxCount: logMaxCount})
 		if err != nil {
 			exitWithError(err)
 			return nil

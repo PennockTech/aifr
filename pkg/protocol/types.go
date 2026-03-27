@@ -153,8 +153,10 @@ type LogEntry struct {
 
 // LogResponse is the JSON response for a log operation.
 type LogResponse struct {
-	Repo    string     `json:"repo"`
-	Ref     string     `json:"ref,omitempty"`
-	Entries []LogEntry `json:"entries"`
-	Total   int        `json:"total"`
+	Repo         string     `json:"repo"`
+	Ref          string     `json:"ref,omitempty"`
+	Entries      []LogEntry `json:"entries"`
+	Total        int        `json:"total"`
+	Continuation string     `json:"continuation,omitempty"`
+	Complete     bool       `json:"complete"`
 }

@@ -24,6 +24,7 @@ type FindParams struct {
 	Sort       SortOrder     // sort results (default: none = walk order)
 	Descending bool          // reverse sort order
 	Limit      int           // 0 = no limit, N = return first N results after sorting
+	Offset     int           // skip first N results (for pagination)
 }
 
 // Find locates files matching the given criteria.
@@ -54,13 +55,36 @@ func (e *Engine) Find(path string, params FindParams) (*protocol.FindResponse, e
 	now := time.Now()
 	e.findDir(resolved, resolved, params, 0, now, resp)
 
+	resp.Total = len(resp.Entries)
 	SortFindEntries(resp.Entries, params.Sort, params.Descending)
+
+	// Apply offset (for continuation).
+	if params.Offset > 0 && params.Offset < len(resp.Entries) {
+		resp.Entries = resp.Entries[params.Offset:]
+	} else if params.Offset >= len(resp.Entries) && params.Offset > 0 {
+		resp.Entries = nil
+	}
+
+	// Apply limit.
 	if params.Limit > 0 && len(resp.Entries) > params.Limit {
 		resp.Entries = resp.Entries[:params.Limit]
 	}
 
-	resp.Total = len(resp.Entries)
-	resp.Complete = true
+	resp.Complete = params.Offset+len(resp.Entries) >= resp.Total
+
+	if !resp.Complete && params.Limit > 0 {
+		tok, err := e.EncodeListContinuation(&ListContinuationToken{
+			Tool:   "find",
+			Path:   resolved,
+			Offset: params.Offset + len(resp.Entries),
+			Limit:  params.Limit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp.Continuation = tok
+	}
+
 	return resp, nil
 }
 

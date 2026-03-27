@@ -14,9 +14,10 @@ type ReflogEntry struct {
 
 // ReflogResponse is the JSON response for a reflog or stash-list operation.
 type ReflogResponse struct {
-	Repo     string        `json:"repo"`
-	Ref      string        `json:"ref"`
-	Entries  []ReflogEntry `json:"entries"`
-	Total    int           `json:"total"`
-	Complete bool          `json:"complete"`
+	Repo         string        `json:"repo"`
+	Ref          string        `json:"ref"`
+	Entries      []ReflogEntry `json:"entries"`
+	Total        int           `json:"total"`
+	Continuation string        `json:"continuation,omitempty"`
+	Complete     bool          `json:"complete"`
 }

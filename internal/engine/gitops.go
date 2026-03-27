@@ -268,8 +268,14 @@ func (e *Engine) Refs(repoName string, branches, tags, remotes bool) (*protocol.
 	return resp, nil
 }
 
+// LogParams controls git log queries.
+type LogParams struct {
+	MaxCount  int    // 0 = default (20)
+	StartHash string // start from this commit's parent (for pagination)
+}
+
 // Log returns git commit log entries.
-func (e *Engine) Log(repoName, ref string, maxCount int) (*protocol.LogResponse, error) {
+func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogResponse, error) {
 	repo, _, err := e.openGitRepo(repoName)
 	if err != nil {
 		return nil, err
@@ -279,9 +285,39 @@ func (e *Engine) Log(repoName, ref string, maxCount int) (*protocol.LogResponse,
 		ref = "HEAD"
 	}
 
+	maxCount := params.MaxCount
+	if maxCount <= 0 {
+		maxCount = 20
+	}
+
 	commit, err := e.gitProvider.ResolveRef(repo, ref)
 	if err != nil {
 		return nil, err
+	}
+
+	// If continuing from a previous page, walk to the start hash's parent.
+	current := commit
+	if params.StartHash != "" {
+		for current != nil && current.Hash.String() != params.StartHash {
+			if current.NumParents() == 0 {
+				current = nil
+				break
+			}
+			current, err = current.Parent(0)
+			if err != nil {
+				current = nil
+				break
+			}
+		}
+		// Move past the start hash to its parent.
+		if current != nil && current.NumParents() > 0 {
+			current, err = current.Parent(0)
+			if err != nil {
+				current = nil
+			}
+		} else {
+			current = nil
+		}
 	}
 
 	resp := &protocol.LogResponse{
@@ -289,11 +325,7 @@ func (e *Engine) Log(repoName, ref string, maxCount int) (*protocol.LogResponse,
 		Ref:  ref,
 	}
 
-	if maxCount <= 0 {
-		maxCount = 20
-	}
-
-	current := commit
+	hitLimit := false
 	for i := 0; i < maxCount && current != nil; i++ {
 		entry := protocol.LogEntry{
 			Hash:        current.Hash.String(),
@@ -333,9 +365,28 @@ func (e *Engine) Log(repoName, ref string, maxCount int) (*protocol.LogResponse,
 		if err != nil {
 			break
 		}
+		if len(resp.Entries) == maxCount && current != nil {
+			hitLimit = true
+		}
 	}
 
 	resp.Total = len(resp.Entries)
+	resp.Complete = !hitLimit
+
+	if !resp.Complete && len(resp.Entries) > 0 {
+		lastHash := resp.Entries[len(resp.Entries)-1].Hash
+		tok, tokErr := e.EncodeListContinuation(&ListContinuationToken{
+			Tool:  "log",
+			Path:  repoName,
+			Limit: maxCount,
+			Hash:  lastHash,
+		})
+		if tokErr != nil {
+			return nil, tokErr
+		}
+		resp.Continuation = tok
+	}
+
 	return resp, nil
 }
 

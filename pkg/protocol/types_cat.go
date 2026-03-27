@@ -25,5 +25,6 @@ type CatResponse struct {
 	TotalBytes   int64      `json:"total_bytes"`   // sum of content bytes returned
 	Truncated    bool       `json:"truncated"`
 	Warning      string     `json:"warning,omitempty"`
+	Continuation string     `json:"continuation,omitempty"`
 	Complete     bool       `json:"complete"`
 }

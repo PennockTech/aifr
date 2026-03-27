@@ -20,6 +20,7 @@ type ListParams struct {
 	Sort       SortOrder // sort entries (default: none = filesystem order)
 	Descending bool      // reverse sort order
 	Limit      int       // 0 = no limit, N = return first N entries after sorting
+	Offset     int       // skip first N results (for pagination)
 }
 
 // List returns directory entries.
@@ -53,13 +54,37 @@ func (e *Engine) List(path string, params ListParams) (*protocol.ListResponse, e
 	}
 
 	SortEntries(entries, params.Sort, params.Descending)
+	total := len(entries)
+
+	// Apply offset (for continuation).
+	if params.Offset > 0 && params.Offset < len(entries) {
+		entries = entries[params.Offset:]
+	} else if params.Offset >= len(entries) && params.Offset > 0 {
+		entries = nil
+	}
+
+	// Apply limit.
 	if params.Limit > 0 && len(entries) > params.Limit {
 		entries = entries[:params.Limit]
 	}
 
 	resp.Entries = entries
-	resp.Total = len(entries)
-	resp.Complete = true
+	resp.Total = total
+	resp.Complete = params.Offset+len(entries) >= total
+
+	if !resp.Complete && params.Limit > 0 {
+		tok, err := e.EncodeListContinuation(&ListContinuationToken{
+			Tool:   "list",
+			Path:   resolved,
+			Offset: params.Offset + len(entries),
+			Limit:  params.Limit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resp.Continuation = tok
+	}
+
 	return resp, nil
 }
 

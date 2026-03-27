@@ -134,6 +134,60 @@ func (e *Engine) decodeContinuation(token string) (*continuationToken, error) {
 	return &tok, nil
 }
 
+// ListContinuationToken holds the state for resuming a paginated list/find/search/log/reflog.
+// Exported so that MCP handlers can inspect decoded tokens.
+type ListContinuationToken struct {
+	Tool   string `json:"t"`           // "list", "find", "search", "log", "reflog", "stash_list"
+	Path   string `json:"p"`           // root path or repo name
+	Offset int    `json:"o"`           // number of results already returned
+	Limit  int    `json:"l"`           // page size
+	Hash   string `json:"h,omitempty"` // for log: last commit hash
+}
+
+// EncodeListContinuation creates an HMAC-signed list continuation token.
+func (e *Engine) EncodeListContinuation(tok *ListContinuationToken) (string, error) {
+	data, err := json.Marshal(tok)
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, e.hmacKey)
+	mac.Write(data)
+	sig := mac.Sum(nil)
+
+	combined := append(data, sig...)
+	return base64.URLEncoding.EncodeToString(combined), nil
+}
+
+// DecodeListContinuation verifies and decodes a list continuation token.
+func (e *Engine) DecodeListContinuation(token string) (*ListContinuationToken, error) {
+	combined, err := base64.URLEncoding.DecodeString(token)
+	if err != nil {
+		return nil, protocol.NewError(protocol.ErrStaleContinuation, "invalid continuation token")
+	}
+
+	if len(combined) < sha256.Size {
+		return nil, protocol.NewError(protocol.ErrStaleContinuation, "invalid continuation token")
+	}
+
+	data := combined[:len(combined)-sha256.Size]
+	sig := combined[len(combined)-sha256.Size:]
+
+	mac := hmac.New(sha256.New, e.hmacKey)
+	mac.Write(data)
+	expectedSig := mac.Sum(nil)
+
+	if !hmac.Equal(sig, expectedSig) {
+		return nil, protocol.NewError(protocol.ErrStaleContinuation, "continuation token signature mismatch")
+	}
+
+	var tok ListContinuationToken
+	if err := json.Unmarshal(data, &tok); err != nil {
+		return nil, protocol.NewError(protocol.ErrStaleContinuation, "invalid continuation token data")
+	}
+
+	return &tok, nil
+}
+
 // isBinary checks if data contains NUL bytes (binary file heuristic).
 func isBinary(data []byte) bool {
 	return slices.Contains(data, 0)
