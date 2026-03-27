@@ -78,6 +78,9 @@ signs:
       - "${artifact}"
 
 release:
+  # draft-only, a human needs to verify before marking the release non-draft.
+  draft: true
+
   footer: |
     ## Verification
 
