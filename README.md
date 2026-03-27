@@ -31,6 +31,11 @@ fail to parse something, not break your setup.
 
 ## Install
 
+Binary releases are available; currently hosted at:
+<https://github.com/PennockTech/aifr/releases>
+
+Or you can build from source.
+
 ```sh
 # From source
 go install go.pennock.tech/aifr/cmd/aifr@latest
