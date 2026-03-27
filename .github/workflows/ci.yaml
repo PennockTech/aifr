@@ -1,0 +1,201 @@
+# CI testing pipeline
+#
+# This workflow MUST be audited with zizmor.
+# This workflow MUST be using pinned action refs.
+# This workflow's pinned action refs SHOULD be updated using 'pinact'
+#
+# Architecture: Design A — single workflow, conditional jobs.
+# A lightweight 'changes' job detects which file categories changed,
+# then downstream jobs run only when their category is affected.
+# A final 'status-check' job aggregates results for branch protection.
+#
+# The change detection logic (in .github/scripts/detect-changes.py) uses
+# the GitHub API to find the last successful CI run that is also a git
+# ancestor of HEAD, so force-pushes to main don't mask broken state.
+#
+# Security notes:
+#   - Top-level permissions are empty; each job declares only what it needs.
+#   - All third-party actions are SHA-pinned.  Run `pinact run` to reverify.
+#
+# Non-GitHub actions (add to repo Settings > Actions > Allowed actions):
+#   - go-task/setup-task
+#   - crate-ci/typos
+#   - lycheeverse/lychee-action
+#   - zizmorcore/zizmor-action
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:  # let someone trigger the CI on their branch without a PR
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: read   # clone the repo
+      actions: read    # query workflow runs API for last-green-on-main
+
+    outputs:
+      go: ${{ steps.detect.outputs.go }}
+      goreleaser: ${{ steps.detect.outputs.goreleaser }}
+      markdown: ${{ steps.detect.outputs.markdown }}
+      workflows: ${{ steps.detect.outputs.workflows }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # full history needed for ancestor checks
+
+      - name: Detect changed file categories
+        id: detect
+        run: python3 .github/scripts/detect-changes.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  go-checks:
+    name: Go
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
+        with:
+          version: 3.x
+
+      - name: Run checks (fmt, vet, test -race)
+        run: task check
+
+      - name: Ensure binary compiles
+        run: task build
+
+  goreleaser-check:
+    name: GoReleaser
+    needs: changes
+    if: needs.changes.outputs.goreleaser == 'true'
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # goreleaser needs tags for versioning
+
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
+        with:
+          version: 3.x
+
+      - name: Install GoReleaser
+        run: go install github.com/goreleaser/goreleaser/v2@latest
+
+      - name: Validate goreleaser config
+        run: goreleaser check
+
+      - name: Test snapshot build
+        run: task release:snapshot
+
+  markdown-checks:
+    name: Markdown
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Spell check
+        uses: crate-ci/typos@631208b7aac2daa8b707f55e7331f9112b0e062d # v1.44.0
+
+      - name: Check local links and anchors
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
+        with:
+          args: "--offline --include-fragments --no-progress './**/*.md'"
+          fail: true
+
+  workflow-checks:
+    name: Workflows
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Audit workflows with zizmor
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+
+  status-check:
+    name: CI Status
+    if: always()
+    needs: [go-checks, goreleaser-check, markdown-checks, workflow-checks]
+    runs-on: ubuntu-slim
+
+    permissions: {}
+
+    steps:
+      - name: Check job results
+        run: |
+          results=(
+            "${{ needs.go-checks.result }}"
+            "${{ needs.goreleaser-check.result }}"
+            "${{ needs.markdown-checks.result }}"
+            "${{ needs.workflow-checks.result }}"
+          )
+          failed=0
+          for r in "${results[@]}"; do
+            case "$r" in
+              success|skipped) ;;
+              *)
+                echo "::error::Job result: $r"
+                failed=1
+                ;;
+            esac
+          done
+          if [[ "$failed" -eq 1 ]]; then
+            echo "One or more required jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All required jobs passed (or were correctly skipped)."
