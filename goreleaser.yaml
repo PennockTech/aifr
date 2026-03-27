@@ -29,7 +29,8 @@ builds:
         goarch: arm64
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
@@ -38,22 +39,42 @@ checksum:
 # Cosign keyless signing — signs the checksums file, which transitively
 # covers all release archives.  Requires id-token: write in the workflow.
 #
+# Cosign v2.5+ defaults to --new-bundle-format which produces a single
+# .bundle file instead of separate .sig/.pem files.
+#
 # To verify:
 #   cosign verify-blob \
-#     --certificate checksums.txt.pem \
-#     --signature checksums.txt.sig \
-#     --certificate-identity-regexp 'https://github.com/PennockTech/aifr/' \
+#     --bundle checksums.txt.bundle \
+#     --certificate-identity-regexp 'https://github\.com/PennockTech/aifr/' \
 #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
 #     checksums.txt
+#
+# OR _if and only if_ this is a snapshot build and you're testing this on a client
+# device, then you should have been prompted by cosign to enter a confirmation code
+# in a browser, and signed in.  This will have generated an attestation of you,
+# rather than a GitHub Workflow, and so the verification becomes, assuming
+# GitHub used as the Identity Provider (IdP):
+#   cosign verify-blob \
+#     --bundle checksums.txt.bundle \
+#     --certificate-identity-regexp 'YOUR@EMAIL-ADDRESS' \
+#     --certificate-oidc-issuer 'https://github.com/login/oauth' \
+#     checksums.txt
+#
+# Do *NOT* put that in release notes etc; people relying downstream should be able to trust some
+# environmentally clean build.
+# The most we should change for the release instructions is updating the regexp
+# ahead of a repository move, to handle old and new names.  We should not
+# tell people to trust your laptop.
+#
 signs:
   - cmd: cosign
     artifacts: checksum
+    signature: "${artifact}.bundle"
     output: true
     args:
       - sign-blob
       - "--yes"
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
+      - "--bundle=${signature}"
       - "${artifact}"
 
 release:
@@ -66,9 +87,8 @@ release:
     ```sh
     # Download the release assets, then verify:
     cosign verify-blob \
-      --certificate checksums.txt.pem \
-      --signature checksums.txt.sig \
-      --certificate-identity-regexp 'https://github.com/PennockTech/aifr/' \
+      --bundle checksums.txt.bundle \
+      --certificate-identity-regexp 'https://github\.com/PennockTech/aifr/' \
       --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
       checksums.txt
 
