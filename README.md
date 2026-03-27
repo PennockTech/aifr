@@ -14,6 +14,8 @@ allow/deny lists with a built-in sensitive-file blocklist).
 The `aifr` tool can read files, read git state, read "getent" system files,
 some basic system information,  and more.  Everything read-only (except the
 MCP self reload task).  No network access, but some network state querying.
+It never runs external commands, there is no possibility for shell injection
+attacks.  All functionality is "native" to this tool.
 
 A number of filters traditionally done with the Unix pipe handling are moved
 left into aifr, to limit the output without needing a pipeline.  This avoids
@@ -27,6 +29,11 @@ repeatedly shelling out to git.  With this agent running as a co-process, they
 can query configuration and contents and some history with a read-only tool:
 safe, because it will not touch anything or break the repo; at worst, it will
 fail to parse something, not break your setup.
+
+Combine with tools such as [`ast-grep`](https://ast-grep.github.io) and
+[`ripgrep`](https://github.com/burntsushi/ripgrep).  `aifr` does not seek to
+replace good tools, it seeks to replace permission-triggering pipeline
+invocations.
 
 
 ## Install
