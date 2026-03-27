@@ -208,4 +208,4 @@ Build targets: Linux (amd64), macOS (arm64), FreeBSD (amd64).
 
 ## License
 
-FIXME: but for now, private and confidential.
+[MIT-style license](LICENSE)
