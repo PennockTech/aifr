@@ -80,7 +80,10 @@ jobs:
   release:
     name: Release
     needs: test
-    runs-on: ubuntu-slim
+
+    # 2026-03-26: 'sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003' depends upon
+    # 'envsubst' being available, which rules out ubuntu-slim.  Thus our v0.1.1 release.
+    runs-on: ubuntu-latest
 
     environment: release
     permissions:
