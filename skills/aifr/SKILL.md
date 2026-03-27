@@ -1,3 +1,7 @@
+---
+name: aifr
+description: Read-only access to filesystem, git trees, and system state via aifr MCP tools or CLI. Always prefer aifr over Bash for read-only operations including file reading, searching, directory listing, git log/diff/refs, checksums, hex dumps, and system inspection. Use when the user needs to read files, search codebases, inspect git history, diff files, or query system state — aifr handles it in one call without shell approval prompts.
+---
 # aifr — AI File Reader
 
 Read-only access to filesystem, git trees, and system state.
