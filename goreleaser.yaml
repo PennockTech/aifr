@@ -45,9 +45,27 @@ checksum:
 # To verify:
 #   cosign verify-blob \
 #     --bundle checksums.txt.bundle \
-#     --certificate-identity-regexp 'https://github.com/PennockTech/aifr/' \
+#     --certificate-identity-regexp 'https://github\.com/PennockTech/aifr/' \
 #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
 #     checksums.txt
+#
+# OR _if and only if_ this is a snapshot build and you're testing this on a client
+# device, then you should have been prompted by cosign to enter a confirmation code
+# in a browser, and signed in.  This will have generated an attestation of you,
+# rather than a GitHub Workflow, and so the verification becomes, assuming
+# GitHub used as the Identity Provider (IdP):
+#   cosign verify-blob \
+#     --bundle checksums.txt.bundle \
+#     --certificate-identity-regexp 'YOUR@EMAIL-ADDRESS' \
+#     --certificate-oidc-issuer 'https://github.com/login/oauth' \
+#     checksums.txt
+#
+# Do *NOT* put that in release notes etc; people relying downstream should be able to trust some
+# environmentally clean build.
+# The most we should change for the release instructions is updating the regexp
+# ahead of a repository move, to handle old and new names.  We should not
+# tell people to trust your laptop.
+#
 signs:
   - cmd: cosign
     artifacts: checksum
@@ -70,7 +88,7 @@ release:
     # Download the release assets, then verify:
     cosign verify-blob \
       --bundle checksums.txt.bundle \
-      --certificate-identity-regexp 'https://github.com/PennockTech/aifr/' \
+      --certificate-identity-regexp 'https://github\.com/PennockTech/aifr/' \
       --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
       checksums.txt
 
