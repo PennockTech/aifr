@@ -8,13 +8,15 @@ builds:
     binary: aifr
     env:
       - CGO_ENABLED=0
+    mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
     ldflags:
       - -s -w
       - -X go.pennock.tech/aifr/internal/version.Version={{.Version}}
       - -X go.pennock.tech/aifr/internal/version.Commit={{.Commit}}
-      - -X go.pennock.tech/aifr/internal/version.BuildDate={{.Date}}
+      - -X go.pennock.tech/aifr/internal/version.BuildDate={{.CommitDate}}
+      - -X go.pennock.tech/aifr/internal/version.BuiltBy=goreleaser
     goos:
       - linux
       - darwin
