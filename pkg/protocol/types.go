@@ -156,6 +156,13 @@ type LogEntry struct {
 	Message      string       `json:"message"`
 	FilesChanged []string     `json:"files_changed,omitempty"`
 	Changes      []FileChange `json:"changes,omitempty"`
+
+	// Verbose fields — only populated when verbose=true.
+	TreeHash       string   `json:"tree_hash,omitempty"`
+	ParentHashes   []string `json:"parent_hashes,omitempty"`
+	Committer      string   `json:"committer,omitempty"`
+	CommitterEmail string   `json:"committer_email,omitempty"`
+	CommitterDate  string   `json:"committer_date,omitempty"`
 }
 
 // LogResponse is the JSON response for a log operation.

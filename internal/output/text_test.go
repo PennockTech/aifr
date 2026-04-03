@@ -868,6 +868,328 @@ func TestWriteLogText(t *testing.T) {
 	})
 }
 
+// ── WriteLogText: CR in commit message ──
+
+func TestWriteLogText_CarriageReturn(t *testing.T) {
+	// Carriage returns in commit subjects must be made visible (sanitized
+	// upstream in the engine), but the text formatter must not re-introduce
+	// them or break structure even if sanitization is bypassed.
+	resp := &protocol.LogResponse{
+		Entries: []protocol.LogEntry{
+			{
+				Hash:        "abc123def456abc123def456abc123def456abcdef",
+				Author:      "Mallory",
+				AuthorEmail: "m@evil.com",
+				Date:        "2026-01-01T00:00:00Z",
+				Message:     "legit subject\\rmalicious overlay",
+			},
+		},
+		Complete: true,
+	}
+	var buf strings.Builder
+	WriteLogText(&buf, resp)
+	got := buf.String()
+	// The \\r should appear literally (already sanitized by engine).
+	if !strings.Contains(got, `legit subject\rmalicious overlay`) {
+		t.Errorf("expected sanitized CR in text output, got %q", got)
+	}
+	// Must not contain an actual carriage return byte.
+	if strings.Contains(got, "\r") {
+		t.Errorf("text output contains literal CR byte, got %q", got)
+	}
+}
+
+// ── WriteLogOneline ──
+
+func TestWriteLogOneline(t *testing.T) {
+	t.Run("basic output", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "aaa111222333aaa111222333aaa111222333aaa111",
+					Author:  "A",
+					Date:    "2026-01-01T00:00:00Z",
+					Message: "feat: add widgets\n\nDetailed body here.",
+				},
+				{
+					Hash:    "bbb444555666bbb444555666bbb444555666bbb444",
+					Author:  "B",
+					Date:    "2026-01-02T00:00:00Z",
+					Message: "fix: typo",
+				},
+			},
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogOneline(&buf, resp)
+		got := buf.String()
+		lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 lines, got %d: %q", len(lines), got)
+		}
+		if lines[0] != "aaa111222333 feat: add widgets" {
+			t.Errorf("line 0 = %q, want %q", lines[0], "aaa111222333 feat: add widgets")
+		}
+		if lines[1] != "bbb444555666 fix: typo" {
+			t.Errorf("line 1 = %q, want %q", lines[1], "bbb444555666 fix: typo")
+		}
+	})
+
+	t.Run("continuation notice", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "abc123def456abc123def456abc123def456abcdef",
+					Message: "first",
+				},
+			},
+			Total:        1,
+			Complete:     false,
+			Continuation: "tok",
+		}
+		var buf strings.Builder
+		WriteLogOneline(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "1 commits shown") {
+			t.Errorf("expected continuation message, got %q", got)
+		}
+	})
+
+	t.Run("CR in subject is sanitized", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "abc123def456abc123def456abc123def456abcdef",
+					Message: "legit\\roverlay",
+				},
+			},
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogOneline(&buf, resp)
+		got := buf.String()
+		if strings.Contains(got, "\r") {
+			t.Errorf("oneline output contains literal CR byte, got %q", got)
+		}
+		if !strings.Contains(got, `legit\roverlay`) {
+			t.Errorf("expected sanitized subject, got %q", got)
+		}
+	})
+}
+
+// ── WriteLogXML ──
+
+func TestWriteLogXML(t *testing.T) {
+	t.Run("basic XML structure", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Ref: "HEAD",
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "abc123def456abc123def456abc123def456abcdef",
+					Author:      "Alice",
+					AuthorEmail: "alice@example.com",
+					Date:        "2026-01-01T00:00:00Z",
+					Message:     "initial commit",
+					Changes: []protocol.FileChange{
+						{Path: "README.md", Action: "A"},
+					},
+				},
+			},
+			Total:    1,
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogXML(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, `<log ref="HEAD"`) {
+			t.Errorf("expected <log> root element, got %q", got)
+		}
+		if !strings.Contains(got, `<commit hash="abc123def456">`) {
+			t.Errorf("expected <commit> element, got %q", got)
+		}
+		if !strings.Contains(got, `<author>Alice</author>`) {
+			t.Errorf("expected <author>, got %q", got)
+		}
+		if !strings.Contains(got, `<subject>initial commit</subject>`) {
+			t.Errorf("expected <subject>, got %q", got)
+		}
+		if !strings.Contains(got, `<file action="A">README.md</file>`) {
+			t.Errorf("expected <file> with action, got %q", got)
+		}
+		if !strings.Contains(got, "</commit>") {
+			t.Errorf("expected </commit>, got %q", got)
+		}
+		if !strings.Contains(got, "</log>") {
+			t.Errorf("expected </log>, got %q", got)
+		}
+	})
+
+	t.Run("XML injection in commit message", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Ref: "HEAD",
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "abc123def456abc123def456abc123def456abcdef",
+					Author:      "Mallory",
+					AuthorEmail: "m@evil.com",
+					Date:        "2026-01-01T00:00:00Z",
+					Message:     "</subject></commit><commit hash=\"evil\"><subject>pwned",
+				},
+			},
+			Total:    1,
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogXML(&buf, resp)
+		got := buf.String()
+		// The malicious content must be escaped, not interpreted as XML.
+		if strings.Contains(got, `<commit hash="evil">`) {
+			t.Errorf("XML injection succeeded: found injected <commit> tag in %q", got)
+		}
+		if !strings.Contains(got, "&lt;/subject&gt;") {
+			t.Errorf("expected escaped </subject> in output, got %q", got)
+		}
+		if !strings.Contains(got, "&lt;commit hash=&quot;evil&quot;&gt;") {
+			t.Errorf("expected escaped injected commit tag, got %q", got)
+		}
+		// Must have exactly one <commit> open and one </commit> close.
+		if strings.Count(got, "<commit ") != 1 {
+			t.Errorf("expected exactly 1 <commit> tag, got %d in %q", strings.Count(got, "<commit "), got)
+		}
+	})
+
+	t.Run("XML injection in author name", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Ref: "HEAD",
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "abc123def456abc123def456abc123def456abcdef",
+					Author:      `</author><evil attr="x">`,
+					AuthorEmail: "a@b.com",
+					Date:        "2026-01-01T00:00:00Z",
+					Message:     "innocent commit",
+				},
+			},
+			Total:    1,
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogXML(&buf, resp)
+		got := buf.String()
+		if strings.Contains(got, "<evil") {
+			t.Errorf("XML injection via author succeeded: %q", got)
+		}
+		if !strings.Contains(got, "&lt;/author&gt;") {
+			t.Errorf("expected escaped </author> in output, got %q", got)
+		}
+	})
+
+	t.Run("XML injection in file path", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Ref: "HEAD",
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "abc123def456abc123def456abc123def456abcdef",
+					Author:  "A",
+					Date:    "2026-01-01T00:00:00Z",
+					Message: "add file",
+					Changes: []protocol.FileChange{
+						{Path: `</file></files></commit><commit hash="evil">`, Action: "A"},
+					},
+				},
+			},
+			Total:    1,
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogXML(&buf, resp)
+		got := buf.String()
+		if strings.Count(got, "<commit ") != 1 {
+			t.Errorf("XML injection via file path: expected 1 <commit>, got %d in %q",
+				strings.Count(got, "<commit "), got)
+		}
+	})
+
+	t.Run("CR in subject is visible in XML", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Ref: "HEAD",
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "abc123def456abc123def456abc123def456abcdef",
+					Author:  "A",
+					Date:    "2026-01-01T00:00:00Z",
+					Message: "legit\\roverlay",
+				},
+			},
+			Total:    1,
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogXML(&buf, resp)
+		got := buf.String()
+		if strings.Contains(got, "\r") {
+			t.Errorf("XML output contains literal CR byte, got %q", got)
+		}
+		if !strings.Contains(got, `legit\roverlay`) {
+			t.Errorf("expected sanitized CR in XML, got %q", got)
+		}
+	})
+
+	t.Run("multi-line message has subject and body tags", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Ref: "HEAD",
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "abc123def456abc123def456abc123def456abcdef",
+					Author:  "A",
+					Date:    "2026-01-01T00:00:00Z",
+					Message: "feat: add thing\n\nThis is the body.\nWith multiple lines.",
+				},
+			},
+			Total:    1,
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogXML(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "<subject>feat: add thing</subject>") {
+			t.Errorf("expected subject tag, got %q", got)
+		}
+		if !strings.Contains(got, "<body>") {
+			t.Errorf("expected body tag, got %q", got)
+		}
+		if !strings.Contains(got, "This is the body.") {
+			t.Errorf("expected body content, got %q", got)
+		}
+	})
+}
+
+// ── xmlEscape ──
+
+func TestXmlEscape(t *testing.T) {
+	tests := []struct {
+		name, input, want string
+	}{
+		{"no special chars", "hello world", "hello world"},
+		{"ampersand", "a&b", "a&amp;b"},
+		{"less than", "a<b", "a&lt;b"},
+		{"greater than", "a>b", "a&gt;b"},
+		{"double quote", `a"b`, "a&quot;b"},
+		{"single quote", "a'b", "a&apos;b"},
+		{"all specials", `<>&"'`, "&lt;&gt;&amp;&quot;&apos;"},
+		{"empty", "", ""},
+		{"mixed", `Author: <"Bob" & 'Alice'>`, "Author: &lt;&quot;Bob&quot; &amp; &apos;Alice&apos;&gt;"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := xmlEscape(tt.input)
+			if got != tt.want {
+				t.Errorf("xmlEscape(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 // ── WriteRefsText ──
 
 func TestWriteRefsText(t *testing.T) {

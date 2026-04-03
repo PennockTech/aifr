@@ -260,6 +260,98 @@ func splitMessage(msg string) (subject, body string) {
 	return
 }
 
+// WriteLogOneline writes a compact one-line-per-commit log.
+func WriteLogOneline(w io.Writer, resp *protocol.LogResponse) {
+	for _, e := range resp.Entries {
+		hash := e.Hash
+		if len(hash) > 12 {
+			hash = hash[:12]
+		}
+		subject, _ := splitMessage(e.Message)
+		fmt.Fprintf(w, "%s %s\n", hash, subject)
+	}
+	if !resp.Complete && resp.Continuation != "" {
+		fmt.Fprintf(w, "... %d commits shown, more available with continuation token\n", resp.Total)
+	}
+}
+
+// WriteLogXML writes a git log response in XML format with proper escaping.
+//
+// All text content (author, message, file paths) is XML-escaped to prevent
+// injection via crafted commit messages that contain XML markup.
+func WriteLogXML(w io.Writer, resp *protocol.LogResponse) {
+	fmt.Fprintf(w, "<log ref=%s total=\"%d\" complete=\"%t\">\n",
+		xmlAttr(resp.Ref), resp.Total, resp.Complete)
+
+	for _, e := range resp.Entries {
+		hash := e.Hash
+		if len(hash) > 12 {
+			hash = hash[:12]
+		}
+		fmt.Fprintf(w, "<commit hash=%s>\n", xmlAttr(hash))
+		fmt.Fprintf(w, "<author>%s</author>\n", xmlEscape(e.Author))
+		fmt.Fprintf(w, "<email>%s</email>\n", xmlEscape(e.AuthorEmail))
+		fmt.Fprintf(w, "<date>%s</date>\n", xmlEscape(e.Date))
+
+		subject, body := splitMessage(e.Message)
+		fmt.Fprintf(w, "<subject>%s</subject>\n", xmlEscape(subject))
+		if body != "" {
+			fmt.Fprintf(w, "<body>\n%s\n</body>\n", xmlEscape(body))
+		}
+
+		if len(e.Changes) > 0 {
+			fmt.Fprintln(w, "<files>")
+			for _, ch := range e.Changes {
+				fmt.Fprintf(w, "<file action=%s>%s</file>\n", xmlAttr(ch.Action), xmlEscape(ch.Path))
+			}
+			fmt.Fprintln(w, "</files>")
+		} else if len(e.FilesChanged) > 0 {
+			fmt.Fprintln(w, "<files>")
+			for _, f := range e.FilesChanged {
+				fmt.Fprintf(w, "<file action=\"M\">%s</file>\n", xmlEscape(f))
+			}
+			fmt.Fprintln(w, "</files>")
+		}
+
+		fmt.Fprintln(w, "</commit>")
+	}
+
+	fmt.Fprintln(w, "</log>")
+}
+
+// xmlEscape escapes text for safe inclusion in XML character data.
+// It replaces &, <, >, ", and ' with their XML entity equivalents.
+func xmlEscape(s string) string {
+	// Fast path: no special chars.
+	if !strings.ContainsAny(s, `&<>"'`) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 10)
+	for _, r := range s {
+		switch r {
+		case '&':
+			b.WriteString("&amp;")
+		case '<':
+			b.WriteString("&lt;")
+		case '>':
+			b.WriteString("&gt;")
+		case '"':
+			b.WriteString("&quot;")
+		case '\'':
+			b.WriteString("&apos;")
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// xmlAttr formats a string as a quoted XML attribute value.
+func xmlAttr(s string) string {
+	return `"` + xmlEscape(s) + `"`
+}
+
 // WriteRefsText writes git refs in human-readable format.
 func WriteRefsText(w io.Writer, resp *protocol.RefsResponse) {
 	for _, r := range resp.Refs {

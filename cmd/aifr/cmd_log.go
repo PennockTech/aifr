@@ -11,12 +11,27 @@ import (
 
 var (
 	logMaxCount int
+	logOneline  bool
+	logDivider  string
+	logVerbose  bool
 )
 
 var logCmd = &cobra.Command{
 	Use:   "log [repo|path][:<ref>]",
 	Short: "Git commit log",
-	Args:  cobra.MaximumNArgs(1),
+	Long: `Show git commit log with structured entries.
+
+Output formats for --format text:
+  default   git-log style with commit/Author/Date headers
+  --oneline compact one-line-per-commit (hash + subject)
+
+Divider formats for --format text (ignored with --oneline):
+  plain   git-log style (default)
+  xml     XML-tagged output with escaped content
+
+Use --verbose to include tree hash, parent hashes, and committer
+details (when they differ from the author) in JSON output.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		eng, err := buildEngine()
 		if err != nil {
@@ -46,7 +61,15 @@ var logCmd = &cobra.Command{
 			}
 		}
 
-		resp, err := eng.Log(repoName, ref, engine.LogParams{MaxCount: logMaxCount})
+		// --oneline implies text format.
+		if logOneline {
+			flagFormat = "oneline"
+		}
+
+		resp, err := eng.Log(repoName, ref, engine.LogParams{
+			MaxCount: logMaxCount,
+			Verbose:  logVerbose,
+		})
 		if err != nil {
 			exitWithError(err)
 			return nil
@@ -58,5 +81,8 @@ var logCmd = &cobra.Command{
 
 func init() {
 	logCmd.Flags().IntVar(&logMaxCount, "max-count", 20, "maximum commits to show")
+	logCmd.Flags().BoolVar(&logOneline, "oneline", false, "compact one-line-per-commit output")
+	logCmd.Flags().StringVar(&logDivider, "divider", "plain", "divider format for text output: plain, xml")
+	logCmd.Flags().BoolVar(&logVerbose, "verbose", false, "include tree hash, parent hashes, committer details")
 	rootCmd.AddCommand(logCmd)
 }

@@ -69,6 +69,8 @@ func TestTextFormatDoesNotReturnJSON(t *testing.T) {
 	textOutputs := map[string]string{
 		"WriteSearchText": searchTextSample(),
 		"WriteLogText":    logTextSample(),
+		"WriteLogOneline": logOnelineSample(),
+		"WriteLogXML":     logXMLSample(),
 		"WriteWcText":     wcTextSample(),
 		"WriteFindText":   findTextSample(),
 		"WriteStatText":   statTextSample(),
@@ -205,7 +207,8 @@ func handlerChecksFormatText(f *ast.File, handlerName string) bool {
 }
 
 // bodyContainsFormatTextCheck looks for any expression matching
-// <something>.Format == "text" or args.Format == "text".
+// <something>.Format == "text" or args.Format == "text", or a switch on
+// args.Format with a case "text" or case "oneline" clause.
 func bodyContainsFormatTextCheck(node ast.Node) bool {
 	if node == nil {
 		return false
@@ -215,23 +218,48 @@ func bodyContainsFormatTextCheck(node ast.Node) bool {
 		if found {
 			return false
 		}
-		be, ok := n.(*ast.BinaryExpr)
-		if !ok || be.Op != token.EQL {
-			return true
-		}
-		// Check LHS is *.Format selector.
-		sel, ok := be.X.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "Format" {
-			return true
-		}
-		// Check RHS is "text" literal.
-		bl, ok := be.Y.(*ast.BasicLit)
-		if !ok || bl.Kind != token.STRING {
-			return true
-		}
-		if bl.Value == `"text"` {
-			found = true
-			return false
+		switch v := n.(type) {
+		case *ast.BinaryExpr:
+			if v.Op != token.EQL {
+				return true
+			}
+			// Check LHS is *.Format selector.
+			sel, ok := v.X.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Format" {
+				return true
+			}
+			// Check RHS is "text" literal.
+			bl, ok := v.Y.(*ast.BasicLit)
+			if !ok || bl.Kind != token.STRING {
+				return true
+			}
+			if bl.Value == `"text"` {
+				found = true
+				return false
+			}
+		case *ast.SwitchStmt:
+			// Check for: switch args.Format { case "text": ... }
+			sel, ok := v.Tag.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Format" {
+				return true
+			}
+			// Check that at least one case clause mentions "text" or "oneline".
+			for _, stmt := range v.Body.List {
+				cc, ok := stmt.(*ast.CaseClause)
+				if !ok {
+					continue
+				}
+				for _, expr := range cc.List {
+					bl, ok := expr.(*ast.BasicLit)
+					if !ok || bl.Kind != token.STRING {
+						continue
+					}
+					if bl.Value == `"text"` || bl.Value == `"oneline"` {
+						found = true
+						return false
+					}
+				}
+			}
 		}
 		return true
 	})
@@ -248,6 +276,14 @@ func searchTextSample() string {
 
 func logTextSample() string {
 	return "commit abc123def456\nAuthor: Author <a@b.c>\nDate:   2026-01-01\n\n    initial commit\n"
+}
+
+func logOnelineSample() string {
+	return "abc123def456 initial commit\n"
+}
+
+func logXMLSample() string {
+	return "<log ref=\"HEAD\" total=\"1\" complete=\"true\">\n<commit hash=\"abc123def456\">\n</commit>\n</log>\n"
 }
 
 func wcTextSample() string {
