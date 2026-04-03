@@ -121,10 +121,10 @@ func writeJSON(v any) {
 
 // writeOutput writes the response in the selected format.
 func writeOutput(v any) {
-	if flagNumberLines && flagFormat != "text" {
+	if flagNumberLines && flagFormat != "text" && flagFormat != "oneline" {
 		applyNumberLines(v)
 	}
-	if flagFormat != "text" {
+	if flagFormat != "text" && flagFormat != "oneline" {
 		writeJSON(v)
 		return
 	}
@@ -143,7 +143,14 @@ func writeOutput(v any) {
 	case *protocol.DiffResponse:
 		output.WriteDiffText(w, resp)
 	case *protocol.LogResponse:
-		output.WriteLogText(w, resp)
+		switch {
+		case flagFormat == "oneline":
+			output.WriteLogOneline(w, resp)
+		case logDivider == "xml":
+			output.WriteLogXML(w, resp)
+		default:
+			output.WriteLogText(w, resp)
+		}
 	case *protocol.RefsResponse:
 		output.WriteRefsText(w, resp)
 	case *protocol.WcResponse:
@@ -200,10 +207,14 @@ func applyNumberLines(v any) {
 
 // cliSupportedFormats returns the list of output formats a command supports.
 func cliSupportedFormats(cmd *cobra.Command) []string {
-	if cmd.Name() == "version" {
+	switch cmd.Name() {
+	case "version":
 		return []string{"json", "text", "short"}
+	case "log":
+		return []string{"json", "text", "oneline"}
+	default:
+		return []string{"json", "text"}
 	}
-	return []string{"json", "text"}
 }
 
 // loadConfig loads the effective configuration.

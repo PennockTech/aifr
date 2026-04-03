@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/utils/merkletrie"
 
 	"go.pennock.tech/aifr/internal/gitprovider"
 	"go.pennock.tech/aifr/pkg/protocol"
@@ -271,7 +272,9 @@ func (e *Engine) Refs(repoName string, branches, tags, remotes bool) (*protocol.
 // LogParams controls git log queries.
 type LogParams struct {
 	MaxCount  int    // 0 = default (20)
+	Skip      int    // skip this many commits before collecting entries
 	StartHash string // start from this commit's parent (for pagination)
+	Verbose   bool   // include tree hash, parent hashes, committer details
 }
 
 // Log returns git commit log entries.
@@ -320,9 +323,23 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 		}
 	}
 
+	// Skip commits if requested.
+	for skipped := 0; skipped < params.Skip && current != nil; skipped++ {
+		if current.NumParents() == 0 {
+			current = nil
+			break
+		}
+		current, err = current.Parent(0)
+		if err != nil {
+			current = nil
+			break
+		}
+	}
+
 	resp := &protocol.LogResponse{
-		Repo: repoName,
-		Ref:  ref,
+		Repo:    repoName,
+		Ref:     ref,
+		Skipped: params.Skip,
 	}
 
 	hitLimit := false
@@ -332,7 +349,22 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 			Author:      current.Author.Name,
 			AuthorEmail: current.Author.Email,
 			Date:        current.Author.When.UTC().Format("2006-01-02T15:04:05Z"),
-			Message:     strings.TrimSpace(current.Message),
+			Message:     sanitizeMessage(strings.TrimSpace(current.Message)),
+		}
+
+		if params.Verbose {
+			entry.TreeHash = current.TreeHash.String()
+			for _, ph := range current.ParentHashes {
+				entry.ParentHashes = append(entry.ParentHashes, ph.String())
+			}
+			// Include committer fields only when they differ from the author.
+			if current.Committer.Name != current.Author.Name ||
+				current.Committer.Email != current.Author.Email ||
+				!current.Committer.When.Equal(current.Author.When) {
+				entry.Committer = current.Committer.Name
+				entry.CommitterEmail = current.Committer.Email
+				entry.CommitterDate = current.Committer.When.UTC().Format("2006-01-02T15:04:05Z")
+			}
 		}
 
 		// Get changed files (compare with parent).
@@ -350,6 +382,22 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 								name = ch.From.Name
 							}
 							entry.FilesChanged = append(entry.FilesChanged, name)
+
+							action := "M"
+							if a, aErr := ch.Action(); aErr == nil {
+								switch a {
+								case merkletrie.Insert:
+									action = "A"
+								case merkletrie.Delete:
+									action = "D"
+								case merkletrie.Modify:
+									action = "M"
+								}
+							}
+							entry.Changes = append(entry.Changes, protocol.FileChange{
+								Path:   name,
+								Action: action,
+							})
 						}
 					}
 				}
@@ -388,6 +436,34 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 	}
 
 	return resp, nil
+}
+
+// sanitizeMessage replaces control characters (especially \r) in commit
+// messages with visible representations to prevent terminal manipulation
+// and ensure safe display in all output formats.
+func sanitizeMessage(msg string) string {
+	if !strings.ContainsAny(msg, "\r\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f") {
+		return msg
+	}
+	var b strings.Builder
+	b.Grow(len(msg))
+	for _, r := range msg {
+		switch {
+		case r == '\n' || r == '\t':
+			// Preserve newlines and tabs — they're structurally meaningful.
+			b.WriteRune(r)
+		case r == '\r':
+			b.WriteString("\\r")
+		case r == '\x1b':
+			b.WriteString("\\e")
+		case r < 0x20 || r == 0x7f:
+			// C0 control characters and DEL: show as \xNN.
+			fmt.Fprintf(&b, "\\x%02x", r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // DiffParams controls the diff operation mode.

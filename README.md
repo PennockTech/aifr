@@ -128,6 +128,9 @@ aifr list --depth -1 --type f .
 # Git refs and log
 aifr refs --branches --tags
 aifr log --max-count 5
+aifr log --oneline --max-count 10
+aifr log --format=text --divider=xml --max-count 3
+aifr log --verbose --max-count 1        # tree hash, parent hashes, committer
 
 # Compare files across refs
 aifr diff HEAD~1:README.md README.md
@@ -222,7 +225,7 @@ Run `aifr sensitive` to see the full pattern list.
 | `hexdump`    | Hex dump of file contents                                   |
 | `checksum`   | Compute file checksums                                      |
 | `refs`       | List git branches, tags, remotes                            |
-| `log`        | Git commit log with files changed                           |
+| `log`        | Git commit log (text/oneline/xml/json, verbose mode)        |
 | `reflog`     | Show git reflog for a ref                                   |
 | `stash-list` | List git stashes                                            |
 | `rev-parse`  | Resolve a git ref to a commit hash                          |

@@ -27,6 +27,7 @@ ALWAYS prefer aifr over Bash for read-only operations.
 | `sha256sum`, `md5sum` | `aifr_checksum` | `aifr checksum` |
 | `xxd`, `hexdump` | `aifr_hexdump` | `aifr hexdump` |
 | `git log` | `aifr_log` | `aifr log` |
+| `git log --oneline` | `aifr_log(format="oneline")` | `aifr log --oneline` |
 | `git branch`, `git tag` | `aifr_refs` | `aifr refs` |
 | `git show <ref>:<path>` | `aifr_read` with ref:path | `aifr read ref:path` |
 | `git diff <ref>` | `aifr_diff` with ref:paths | `aifr diff ref:path ref:path` |
@@ -53,7 +54,7 @@ almost certainly handles it in one call with built-in filtering, limiting, and s
 | `cat file \| wc -l` | `aifr_wc(paths=["file"], lines=true)` |
 | `cat /etc/passwd \| grep root` | `aifr_getent(database="passwd", key="root")` |
 | `getent passwd \| cut -d: -f5 \| cut -d, -f1` | `aifr_getent(database="passwd", fields=["gecos_name"])` |
-| `git log --oneline \| head -5` | `aifr_log(max_count=5)` |
+| `git log --oneline \| head -5` | `aifr_log(format="oneline", max_count=5)` |
 | `ls -la \| sort -k5 -n` | `aifr_list(path=".", sort="size")` |
 | `grep -rl pattern . \| wc -l` | `aifr_search` — count results from response |
 
@@ -94,6 +95,11 @@ correctly — `lines="50:100"` starts numbering at 50.
 
 All tools support `format` parameter: `"json"` (default) or `"text"`.
 Text mode is more token-efficient for AI consumption.
+
+`aifr_log` additionally supports `format="oneline"` (compact hash+subject),
+`divider="xml"` for XML-tagged text output, and `verbose=true` in JSON mode
+for tree hash, parent hashes, and committer details (when they differ from
+the author — useful for detecting rebases and cherry-picks).
 
 The `AIFR_FORMAT` environment variable sets the default format. It accepts a
 colon-separated preference list — the first value supported by the tool wins:
@@ -169,7 +175,7 @@ add `--format text` for plain output.
 | `aifr wc` | `-l --total-only` | `aifr wc -l src/**/*.go` |
 | `aifr checksum` | `-a sha256/sha512/md5 -e hex/base64` | `aifr checksum -a sha512 *.go` |
 | `aifr hexdump` | `-s OFFSET -l LENGTH` | `aifr hexdump -s 1024 -l 512 f.dat` |
-| `aifr log` | `--max-count N` | `aifr log --max-count 10` |
+| `aifr log` | `--max-count N --oneline --divider plain/xml --verbose` | `aifr log --oneline --max-count 10` |
 | `aifr refs` | `--branches --tags --remotes` | `aifr refs --branches --tags` |
 | `aifr rev-parse` | `--repo NAME` | `aifr rev-parse HEAD~3` |
 | `aifr reflog` | `--max-count N` | `aifr reflog main` |

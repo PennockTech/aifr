@@ -20,6 +20,7 @@ ALWAYS prefer aifr_* tools over Bash for read-only operations.
 | `sha256sum`, `md5sum` | `aifr_checksum` |
 | `xxd`, `hexdump` | `aifr_hexdump` |
 | `git log` | `aifr_log` |
+| `git log --oneline` | `aifr_log` with `format="oneline"` |
 | `git branch`, `git tag` | `aifr_refs` |
 | `git show <ref>:<path>` | `aifr_read` with ref:path |
 | `git diff <ref>` | `aifr_diff` with ref:paths |
@@ -59,6 +60,8 @@ Examples: `HEAD:README.md`, `main:src/lib.go`, `v2.0:config.toml`, `HEAD~3:file.
 **Line numbers**: `aifr_read(path=..., number_lines=true)` or `aifr_cat(..., number_lines=true)` prefixes each line with its actual file line number. Line ranges are numbered correctly — `lines="50:100"` starts at 50.
 
 **Output format**: All tools accept `format`: `"json"` (default) or `"text"`. Text is more token-efficient. The `AIFR_FORMAT` env var sets the default (colon-separated preference list, first supported value wins). Explicit `format` parameter overrides env.
+
+**Git log formats**: `aifr_log` supports `format="json"` (default), `format="text"` (git-log style), or `format="oneline"` (compact hash+subject). Text mode accepts `divider="xml"` for XML-tagged output. Use `verbose=true` in JSON mode for tree hash, parent hashes, and committer details.
 
 **Multi-file**: `aifr_cat(root=".", name="*.go", format="text", divider="xml")` → `<file path="...">content</file>` per file. Use `lines` for head mode, `exclude_path` to skip directories.
 

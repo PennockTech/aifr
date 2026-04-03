@@ -141,14 +141,28 @@ type RefsResponse struct {
 	Refs []GitRef `json:"refs"`
 }
 
+// FileChange describes a changed file and its action within a commit.
+type FileChange struct {
+	Path   string `json:"path"`
+	Action string `json:"action"` // "A" (add), "M" (modify), "D" (delete)
+}
+
 // LogEntry describes a single git commit.
 type LogEntry struct {
-	Hash         string   `json:"hash"`
-	Author       string   `json:"author"`
-	AuthorEmail  string   `json:"author_email"`
-	Date         string   `json:"date"`
-	Message      string   `json:"message"`
-	FilesChanged []string `json:"files_changed,omitempty"`
+	Hash         string       `json:"hash"`
+	Author       string       `json:"author"`
+	AuthorEmail  string       `json:"author_email"`
+	Date         string       `json:"date"`
+	Message      string       `json:"message"`
+	FilesChanged []string     `json:"files_changed,omitempty"`
+	Changes      []FileChange `json:"changes,omitempty"`
+
+	// Verbose fields — only populated when verbose=true.
+	TreeHash       string   `json:"tree_hash,omitempty"`
+	ParentHashes   []string `json:"parent_hashes,omitempty"`
+	Committer      string   `json:"committer,omitempty"`
+	CommitterEmail string   `json:"committer_email,omitempty"`
+	CommitterDate  string   `json:"committer_date,omitempty"`
 }
 
 // LogResponse is the JSON response for a log operation.
@@ -157,6 +171,7 @@ type LogResponse struct {
 	Ref          string     `json:"ref,omitempty"`
 	Entries      []LogEntry `json:"entries"`
 	Total        int        `json:"total"`
+	Skipped      int        `json:"skipped,omitempty"`
 	Continuation string     `json:"continuation,omitempty"`
 	Complete     bool       `json:"complete"`
 }

@@ -185,16 +185,23 @@ func toolRefs() *mcp.Tool {
 
 func toolLog() *mcp.Tool {
 	return &mcp.Tool{
-		Name:        "aifr_log",
-		Description: "Git commit log with structured entries (hash, author, date, message, files changed). Use format=\"text\" for compact output.",
+		Name: "aifr_log",
+		Description: `Git commit log with structured entries (hash, author, date, message, files changed).
+
+Formats: json (default, structured), text (git-log style), oneline (compact hash+subject).
+For text format, divider controls layout: plain (default) or xml (XML-tagged with escaped content).
+Use verbose=true in json mode for tree_hash, parent_hashes, and committer details.`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"repo":         map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
 				"ref":          map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
 				"max_count":    map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
+				"skip":         map[string]any{"type": "integer", "description": "Skip this many commits before collecting results", "default": 0},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous log"},
-				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text", "oneline"}, "description": "Output format (default: json)", "default": "json"},
+				"divider":      map[string]any{"type": "string", "enum": []string{"plain", "xml"}, "description": "Divider format for text output (default: plain)", "default": "plain"},
+				"verbose":      map[string]any{"type": "boolean", "description": "Include tree hash, parent hashes, committer details in JSON output", "default": false},
 			},
 		}),
 	}
@@ -528,15 +535,18 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		Repo         string `json:"repo"`
 		Ref          string `json:"ref"`
 		MaxCount     int    `json:"max_count"`
+		Skip         int    `json:"skip"`
 		Continuation string `json:"continuation"`
 		Format       string `json:"format"`
+		Divider      string `json:"divider"`
+		Verbose      bool   `json:"verbose"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
 	args.Format = resolveMCPFormat(args.Format)
 
-	params := engine.LogParams{MaxCount: args.MaxCount}
+	params := engine.LogParams{MaxCount: args.MaxCount, Skip: args.Skip, Verbose: args.Verbose}
 	if args.Continuation != "" {
 		tok, err := s.decodeContinuation(args.Continuation, "log")
 		if err != nil {
@@ -552,14 +562,27 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 	if err != nil {
 		return toolError(err.Error())
 	}
-	if args.Format == "text" {
+
+	switch args.Format {
+	case "oneline":
 		var buf strings.Builder
-		output.WriteLogText(&buf, resp)
+		output.WriteLogOneline(&buf, resp)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
 		}, nil
+	case "text":
+		var buf strings.Builder
+		if args.Divider == "xml" {
+			output.WriteLogXML(&buf, resp)
+		} else {
+			output.WriteLogText(&buf, resp)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	default:
+		return toolResult(resp)
 	}
-	return toolResult(resp)
 }
 
 // decodeContinuation is a helper to decode and validate a list continuation token.
