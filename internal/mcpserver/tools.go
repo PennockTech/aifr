@@ -15,6 +15,7 @@ import (
 	"go.pennock.tech/aifr/internal/gitprovider"
 	"go.pennock.tech/aifr/internal/output"
 	"go.pennock.tech/aifr/internal/version"
+	"go.pennock.tech/aifr/pkg/protocol"
 )
 
 func (s *Server) registerTools() {
@@ -58,15 +59,20 @@ Chunking (mutually exclusive):
   lines: "1:50"           → lines 1-50 (1-indexed, inclusive)
   chunk_id: "<token>"     → continue from previous chunk
 
+Use format="text" for token-efficient output (raw content, no JSON envelope).
+Use number_lines=true to prefix each line with its file line number (like cat -n).
+
 Returns: file content, metadata, and continuation token if incomplete.
 Errors: ACCESS_DENIED_SENSITIVE means the file looks like a credential
         and the user should be asked to read it manually if needed.`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path":     map[string]any{"type": "string", "description": "File path or git ref:path"},
-				"lines":    map[string]any{"type": "string", "description": "Line range e.g. '1:50' or '50:'"},
-				"chunk_id": map[string]any{"type": "string", "description": "Continuation token from previous read"},
+				"path":         map[string]any{"type": "string", "description": "File path or git ref:path"},
+				"lines":        map[string]any{"type": "string", "description": "Line range e.g. '1:50' or '50:'"},
+				"chunk_id":     map[string]any{"type": "string", "description": "Continuation token from previous read"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
+				"number_lines": map[string]any{"type": "boolean", "description": "Prefix each line with its file line number (like cat -n)"},
 			},
 			"required": []string{"path"},
 		}),
@@ -76,11 +82,12 @@ Errors: ACCESS_DENIED_SENSITIVE means the file looks like a credential
 func toolStat() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "aifr_stat",
-		Description: "Get file/directory metadata. Returns type, size, mode, mtime. Supports filesystem paths and git refs.",
+		Description: "Get file/directory metadata. Returns type, size, mode, mtime. Supports filesystem paths and git refs. Use format=\"text\" for compact output.",
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path": map[string]any{"type": "string", "description": "File path or git ref:path"},
+				"path":   map[string]any{"type": "string", "description": "File path or git ref:path"},
+				"format": map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"path"},
 		}),
@@ -90,7 +97,7 @@ func toolStat() *mcp.Tool {
 func toolList() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "aifr_list",
-		Description: "List directory contents. Supports depth control, glob pattern filtering, and type filtering. Supports filesystem and git refs.",
+		Description: "List directory contents. Supports depth control, glob pattern filtering, and type filtering. Supports filesystem and git refs. Use format=\"text\" for compact ls-style output.",
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -102,6 +109,7 @@ func toolList() *mcp.Tool {
 				"desc":         map[string]any{"type": "boolean", "description": "Sort descending"},
 				"limit":        map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous list"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"path"},
 		}),
@@ -112,7 +120,8 @@ func toolSearch() *mcp.Tool {
 	return &mcp.Tool{
 		Name: "aifr_search",
 		Description: `Search file contents (grep-like). RE2 regexp or fixed-string matching.
-Returns structured matches with file, line, column, and optional context lines.`,
+Returns structured matches with file, line, column, and optional context lines.
+Use format="text" for ripgrep-style compact output (file:line:col: match).`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -125,6 +134,7 @@ Returns structured matches with file, line, column, and optional context lines.`
 				"include":      map[string]any{"type": "string", "description": "Glob for files to include"},
 				"exclude":      map[string]any{"type": "string", "description": "Glob for files to exclude"},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous search"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"pattern", "path"},
 		}),
@@ -134,7 +144,7 @@ Returns structured matches with file, line, column, and optional context lines.`
 func toolFind() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "aifr_find",
-		Description: "Find files by name/path pattern, type, size, or age. Returns matching paths as structured JSON.",
+		Description: "Find files by name/path pattern, type, size, or age. Returns matching paths. Use format=\"text\" for one-path-per-line output.",
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -149,6 +159,7 @@ func toolFind() *mcp.Tool {
 				"desc":         map[string]any{"type": "boolean", "description": "Sort descending"},
 				"limit":        map[string]any{"type": "integer", "description": "Limit results (0=no limit)"},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous find"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"path"},
 		}),
@@ -192,6 +203,7 @@ func toolDiff() *mcp.Tool {
 		Name: "aifr_diff",
 		Description: `Compare two files. Supports filesystem paths and git refs.
 Use byte_level=true for cmp-style byte comparison (reports first differing byte).
+Use format="text" for unified diff output.
 Examples: diff file1.go file2.go, diff main:lib.go feature:lib.go, diff HEAD~1:README.md README.md`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
@@ -199,6 +211,7 @@ Examples: diff file1.go file2.go, diff main:lib.go feature:lib.go, diff HEAD~1:R
 				"path_a":     map[string]any{"type": "string", "description": "First path (filesystem or git ref:path)"},
 				"path_b":     map[string]any{"type": "string", "description": "Second path (filesystem or git ref:path)"},
 				"byte_level": map[string]any{"type": "boolean", "description": "Byte-level comparison (cmp mode): report first differing byte instead of line diff"},
+				"format":     map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"path_a", "path_b"},
 		}),
@@ -209,9 +222,11 @@ Examples: diff file1.go file2.go, diff main:lib.go feature:lib.go, diff HEAD~1:R
 
 func (s *Server) handleRead(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Path    string `json:"path"`
-		Lines   string `json:"lines"`
-		ChunkID string `json:"chunk_id"`
+		Path        string `json:"path"`
+		Lines       string `json:"lines"`
+		ChunkID     string `json:"chunk_id"`
+		Format      string `json:"format"`
+		NumberLines bool   `json:"number_lines"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -226,38 +241,69 @@ func (s *Server) handleRead(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		params.Lines = lr
 	}
 
+	var resp *protocol.ReadResponse
 	if gitprovider.IsGitPath(args.Path) {
-		resp, err := s.engine.GitRead(args.Path, params)
+		var err error
+		resp, err = s.engine.GitRead(args.Path, params)
 		if err != nil {
 			return toolError(err.Error())
 		}
-		return toolResult(resp)
+	} else {
+		var err error
+		resp, err = s.engine.Read(args.Path, params)
+		if err != nil {
+			return toolError(err.Error())
+		}
 	}
-	resp, err := s.engine.Read(args.Path, params)
-	if err != nil {
-		return toolError(err.Error())
+
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteReadText(&buf, resp, args.NumberLines)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	}
+
+	if args.NumberLines && resp.Chunk != nil && resp.Chunk.Encoding == "utf-8" {
+		startLine := resp.Chunk.StartLine
+		if startLine < 1 {
+			startLine = 1
+		}
+		resp.Chunk.Data = output.NumberLines(resp.Chunk.Data, startLine)
 	}
 	return toolResult(resp)
 }
 
 func (s *Server) handleStat(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Path string `json:"path"`
+		Path   string `json:"path"`
+		Format string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
 
+	var resp *protocol.StatEntry
 	if gitprovider.IsGitPath(args.Path) {
-		resp, err := s.engine.GitStat(args.Path)
+		var err error
+		resp, err = s.engine.GitStat(args.Path)
 		if err != nil {
 			return toolError(err.Error())
 		}
-		return toolResult(resp)
+	} else {
+		var err error
+		resp, err = s.engine.Stat(args.Path)
+		if err != nil {
+			return toolError(err.Error())
+		}
 	}
-	resp, err := s.engine.Stat(args.Path)
-	if err != nil {
-		return toolError(err.Error())
+
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteStatText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -272,6 +318,7 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		Desc         bool   `json:"desc"`
 		Limit        int    `json:"limit"`
 		Continuation string `json:"continuation"`
+		Format       string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -281,6 +328,13 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		resp, err := s.engine.GitList(args.Path)
 		if err != nil {
 			return toolError(err.Error())
+		}
+		if args.Format == "text" {
+			var buf strings.Builder
+			output.WriteListText(&buf, resp)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+			}, nil
 		}
 		return toolResult(resp)
 	}
@@ -308,6 +362,13 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err != nil {
 		return toolError(err.Error())
 	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteListText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	}
 	return toolResult(resp)
 }
 
@@ -322,6 +383,7 @@ func (s *Server) handleSearch(_ context.Context, req *mcp.CallToolRequest) (*mcp
 		Include      string `json:"include"`
 		Exclude      string `json:"exclude"`
 		Continuation string `json:"continuation"`
+		Format       string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -355,6 +417,14 @@ func (s *Server) handleSearch(_ context.Context, req *mcp.CallToolRequest) (*mcp
 	if err != nil {
 		return toolError(err.Error())
 	}
+
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteSearchText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	}
 	return toolResult(resp)
 }
 
@@ -371,6 +441,7 @@ func (s *Server) handleFind(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		Desc         bool   `json:"desc"`
 		Limit        int    `json:"limit"`
 		Continuation string `json:"continuation"`
+		Format       string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -408,6 +479,13 @@ func (s *Server) handleFind(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	resp, err := s.engine.Find(args.Path, params)
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteFindText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -476,6 +554,7 @@ func (s *Server) handleDiff(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		PathA     string `json:"path_a"`
 		PathB     string `json:"path_b"`
 		ByteLevel bool   `json:"byte_level"`
+		Format    string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -485,6 +564,13 @@ func (s *Server) handleDiff(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteDiffText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -498,6 +584,7 @@ func toolCat() *mcp.Tool {
 
 Tip: Use format="text" with divider="xml" for token-efficient multi-file
 reading. Each file is wrapped in <file path="...">content</file> tags.
+Use number_lines=true to prefix each line with its file line number (like cat -n).
 
 Binary files are skipped. Each file is access-controlled individually.
 Use "lines" to limit output to first N lines per file (head mode).`,
@@ -514,6 +601,7 @@ Use "lines" to limit output to first N lines per file (head mode).`,
 				"format":         map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 				"max_total_size": map[string]any{"type": "integer", "description": "Max total output bytes (default: 2MiB)"},
 				"max_files":      map[string]any{"type": "integer", "description": "Max files to read (default: 1000)"},
+				"number_lines":   map[string]any{"type": "boolean", "description": "Prefix each line with its file line number (like cat -n)"},
 			},
 		}),
 	}
@@ -531,6 +619,7 @@ func (s *Server) handleCat(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		Format       string   `json:"format"`
 		MaxTotalSize int64    `json:"max_total_size"`
 		MaxFiles     int      `json:"max_files"`
+		NumberLines  bool     `json:"number_lines"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -557,12 +646,21 @@ func (s *Server) handleCat(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 			divider = "xml"
 		}
 		var buf strings.Builder
-		output.WriteCatText(&buf, resp, divider)
+		output.WriteCatText(&buf, resp, divider, args.NumberLines)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
 		}, nil
 	}
 
+	// Apply line numbering to JSON response content if requested.
+	if args.NumberLines {
+		for i := range resp.Files {
+			entry := &resp.Files[i]
+			if entry.Content != "" && !entry.Binary && entry.Error == "" {
+				entry.Content = output.NumberLines(entry.Content, 1)
+			}
+		}
+	}
 	return toolResult(resp)
 }
 

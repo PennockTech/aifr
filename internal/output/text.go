@@ -15,11 +15,39 @@ func WriteStatText(w io.Writer, entry *protocol.StatEntry) {
 		entry.Mode, entry.Type, entry.Size, entry.ModTime, entry.Path)
 }
 
+// NumberLines prepends line numbers to each line in data, starting at startLine.
+// Format matches cat -n: right-justified 6-wide number, tab, then content.
+func NumberLines(data string, startLine int) string {
+	if data == "" {
+		return data
+	}
+	lines := strings.Split(data, "\n")
+	// If data ends with \n, Split produces a trailing empty element — drop it.
+	trailingNewline := strings.HasSuffix(data, "\n")
+	if trailingNewline && len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	var buf strings.Builder
+	for i, line := range lines {
+		fmt.Fprintf(&buf, "%6d\t%s\n", startLine+i, line)
+	}
+	return buf.String()
+}
+
 // WriteReadText writes read response data in human-readable format.
-func WriteReadText(w io.Writer, resp *protocol.ReadResponse) {
+// If numberLines is true, each line is prefixed with its file line number.
+func WriteReadText(w io.Writer, resp *protocol.ReadResponse, numberLines bool) {
 	if resp.Chunk != nil && resp.Chunk.Encoding == "utf-8" {
-		io.WriteString(w, resp.Chunk.Data) //nolint:errcheck
-		if !strings.HasSuffix(resp.Chunk.Data, "\n") {
+		data := resp.Chunk.Data
+		if numberLines {
+			startLine := resp.Chunk.StartLine
+			if startLine < 1 {
+				startLine = 1
+			}
+			data = NumberLines(data, startLine)
+		}
+		io.WriteString(w, data) //nolint:errcheck
+		if !strings.HasSuffix(data, "\n") {
 			io.WriteString(w, "\n") //nolint:errcheck
 		}
 	}
@@ -91,7 +119,8 @@ func WriteDiffText(w io.Writer, resp *protocol.DiffResponse) {
 
 // WriteCatText writes a cat response with the specified divider format.
 // Divider is one of "plain", "xml", or "none".
-func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
+// If numberLines is true, each file's content is prefixed with line numbers starting at 1.
+func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string, numberLines bool) {
 	for _, entry := range resp.Files {
 		displayPath := entry.RelPath
 		if displayPath == "" {
@@ -100,11 +129,11 @@ func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
 
 		switch divider {
 		case "xml":
-			writeCatXML(w, entry, displayPath)
+			writeCatXML(w, entry, displayPath, numberLines)
 		case "none":
-			writeCatNone(w, entry)
+			writeCatNone(w, entry, numberLines)
 		default: // "plain"
-			writeCatPlain(w, entry, displayPath)
+			writeCatPlain(w, entry, displayPath, numberLines)
 		}
 	}
 
@@ -122,7 +151,14 @@ func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
 	}
 }
 
-func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string) {
+func numberContent(content string, numberLines bool) string {
+	if !numberLines || content == "" {
+		return content
+	}
+	return NumberLines(content, 1)
+}
+
+func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string, numberLines bool) {
 	switch {
 	case entry.Error != "":
 		fmt.Fprintf(w, "--- %s (error: %s) ---\n", path, entry.Error)
@@ -130,14 +166,15 @@ func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string) {
 		fmt.Fprintf(w, "--- %s (binary, skipped) ---\n", path)
 	default:
 		fmt.Fprintf(w, "--- %s ---\n", path)
-		io.WriteString(w, entry.Content) //nolint:errcheck
-		if len(entry.Content) > 0 && entry.Content[len(entry.Content)-1] != '\n' {
+		content := numberContent(entry.Content, numberLines)
+		io.WriteString(w, content) //nolint:errcheck
+		if len(content) > 0 && content[len(content)-1] != '\n' {
 			io.WriteString(w, "\n") //nolint:errcheck
 		}
 	}
 }
 
-func writeCatXML(w io.Writer, entry protocol.CatEntry, path string) {
+func writeCatXML(w io.Writer, entry protocol.CatEntry, path string, numberLines bool) {
 	switch {
 	case entry.Error != "":
 		fmt.Fprintf(w, "<file path=%q error=%q />\n", path, entry.Error)
@@ -145,17 +182,19 @@ func writeCatXML(w io.Writer, entry protocol.CatEntry, path string) {
 		fmt.Fprintf(w, "<file path=%q binary=\"true\" />\n", path)
 	default:
 		fmt.Fprintf(w, "<file path=%q>\n", path)
-		io.WriteString(w, entry.Content) //nolint:errcheck
-		if len(entry.Content) > 0 && entry.Content[len(entry.Content)-1] != '\n' {
+		content := numberContent(entry.Content, numberLines)
+		io.WriteString(w, content) //nolint:errcheck
+		if len(content) > 0 && content[len(content)-1] != '\n' {
 			io.WriteString(w, "\n") //nolint:errcheck
 		}
 		fmt.Fprintln(w, "</file>")
 	}
 }
 
-func writeCatNone(w io.Writer, entry protocol.CatEntry) {
+func writeCatNone(w io.Writer, entry protocol.CatEntry, numberLines bool) {
 	if entry.Error != "" || entry.Binary {
 		return // skip silently in none mode
 	}
-	io.WriteString(w, entry.Content) //nolint:errcheck
+	content := numberContent(entry.Content, numberLines)
+	io.WriteString(w, content) //nolint:errcheck
 }

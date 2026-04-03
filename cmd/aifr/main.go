@@ -22,6 +22,7 @@ var (
 	flagFormat       string
 	flagQuiet        bool
 	flagNoRedact     bool
+	flagNumberLines  bool
 	flagVersionShort bool
 )
 
@@ -70,6 +71,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "json", "output format (json|text)")
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoRedact, "no-redact", false, "do not redact sensitive config values")
+	rootCmd.PersistentFlags().BoolVarP(&flagNumberLines, "number-lines", "n", false, "prefix each line with its file line number")
 
 	versionCmd.Flags().BoolVarP(&flagVersionShort, "short", "s", false, "just the version")
 
@@ -102,6 +104,9 @@ func writeJSON(v any) {
 
 // writeOutput writes the response in the selected format.
 func writeOutput(v any) {
+	if flagNumberLines {
+		applyNumberLines(v)
+	}
 	if flagFormat != "text" {
 		writeJSON(v)
 		return
@@ -109,7 +114,7 @@ func writeOutput(v any) {
 	w := os.Stdout
 	switch resp := v.(type) {
 	case *protocol.ReadResponse:
-		output.WriteReadText(w, resp)
+		output.WriteReadText(w, resp, flagNumberLines)
 	case *protocol.StatEntry:
 		output.WriteStatText(w, resp)
 	case *protocol.ListResponse:
@@ -125,6 +130,28 @@ func writeOutput(v any) {
 	default:
 		// Types without a dedicated text formatter fall back to JSON.
 		writeJSON(v)
+	}
+}
+
+// applyNumberLines mutates response content to include line numbers (for JSON mode).
+// In text mode, the text formatters handle numbering directly.
+func applyNumberLines(v any) {
+	switch resp := v.(type) {
+	case *protocol.ReadResponse:
+		if resp.Chunk != nil && resp.Chunk.Encoding == "utf-8" {
+			startLine := resp.Chunk.StartLine
+			if startLine < 1 {
+				startLine = 1
+			}
+			resp.Chunk.Data = output.NumberLines(resp.Chunk.Data, startLine)
+		}
+	case *protocol.CatResponse:
+		for i := range resp.Files {
+			entry := &resp.Files[i]
+			if entry.Content != "" && !entry.Binary && entry.Error == "" {
+				entry.Content = output.NumberLines(entry.Content, 1)
+			}
+		}
 	}
 }
 
