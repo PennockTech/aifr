@@ -148,8 +148,12 @@ jobs:
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
-          args: check
-          # We also rely upon it being installed, for the `task release:snapshot` below
+          install-only: true
+          # if we use 'args: check' then it doesn't _also_ install.
+          # `install-only` might lead one to infer that it is always installed and we're cutting back, but no.
+
+      - name: Validate goreleaser config
+        run: goreleaser check
 
       - name: Test snapshot build
         run: task release:snapshot
