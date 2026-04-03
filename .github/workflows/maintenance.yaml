@@ -78,9 +78,10 @@ jobs:
       pull-requests: write   # create a PR
 
     steps:
-      # zizmor: persist-credentials is intentionally left at default (true)
-      # because this job needs to push a branch to create a PR.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 # zizmor: ignore[artipacked]
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # zizmor: persist-credentials is required because we need to push a branch to create a PR
+          persist-credentials: true
 
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
@@ -98,6 +99,7 @@ jobs:
       - name: Check for changes and create PR
         run: |
           git config user.name "github-actions[bot]"
+          # Corresponds to: https://api.github.com/users/github-actions%5Bbot%5D
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if git diff --quiet; then
