@@ -233,6 +233,7 @@ func (s *Server) handleRead(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	params := engine.ReadParams{ChunkID: args.ChunkID}
 	if args.Lines != "" {
@@ -284,6 +285,7 @@ func (s *Server) handleStat(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	var resp *protocol.StatEntry
 	if gitprovider.IsGitPath(args.Path) {
@@ -325,6 +327,7 @@ func (s *Server) handleList(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	if gitprovider.IsGitPath(args.Path) {
 		resp, err := s.engine.GitList(args.Path)
@@ -390,6 +393,7 @@ func (s *Server) handleSearch(_ context.Context, req *mcp.CallToolRequest) (*mcp
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	isRegexp := true
 	if args.Regexp != nil {
@@ -448,6 +452,7 @@ func (s *Server) handleFind(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	params := engine.FindParams{
 		Name:       args.Name,
@@ -503,6 +508,7 @@ func (s *Server) handleRefs(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.Refs(args.Repo, args.Branches, args.Tags, args.Remotes)
 	if err != nil {
 		return toolError(err.Error())
@@ -528,6 +534,7 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	params := engine.LogParams{MaxCount: args.MaxCount}
 	if args.Continuation != "" {
@@ -577,6 +584,7 @@ func (s *Server) handleDiff(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.Diff(args.PathA, args.PathB, engine.DiffParams{
 		ByteLevel: args.ByteLevel,
 	})
@@ -642,6 +650,7 @@ func (s *Server) handleCat(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	params := engine.CatParams{
 		Name:         args.Name,
@@ -716,6 +725,7 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.Pathfind(args.Command, engine.PathfindParams{
 		SearchList: args.SearchList,
 	})
@@ -762,6 +772,7 @@ func (s *Server) handleReflog(_ context.Context, req *mcp.CallToolRequest) (*mcp
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	params := engine.ReflogParams{MaxCount: args.MaxCount}
 	if args.Continuation != "" {
@@ -817,6 +828,7 @@ func (s *Server) handleStashList(_ context.Context, req *mcp.CallToolRequest) (*
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	params := engine.ReflogParams{MaxCount: args.MaxCount}
 	if args.Continuation != "" {
@@ -876,6 +888,7 @@ func (s *Server) handleGetent(_ context.Context, req *mcp.CallToolRequest) (*mcp
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.Getent(engine.GetentParams{
 		Database: args.Database,
 		Key:      args.Key,
@@ -923,6 +936,7 @@ func (s *Server) handleSysinfo(_ context.Context, req *mcp.CallToolRequest) (*mc
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.Sysinfo(engine.SysinfoParams{
 		Sections: args.Sections,
 	})
@@ -968,6 +982,7 @@ func (s *Server) handleHexdump(_ context.Context, req *mcp.CallToolRequest) (*mc
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.Hexdump(args.Path, engine.HexdumpParams{
 		Offset: args.Offset,
 		Length: args.Length,
@@ -1012,6 +1027,7 @@ func (s *Server) handleRevParse(_ context.Context, req *mcp.CallToolRequest) (*m
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.RevParse(args.Repo, args.Ref)
 	if err != nil {
 		return toolError(err.Error())
@@ -1055,6 +1071,7 @@ func (s *Server) handleChecksum(_ context.Context, req *mcp.CallToolRequest) (*m
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	if len(args.Paths) == 0 {
 		return toolError("paths is required and must not be empty")
 	}
@@ -1110,6 +1127,7 @@ func (s *Server) handleWc(_ context.Context, req *mcp.CallToolRequest) (*mcp.Cal
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	if len(args.Paths) == 0 {
 		return toolError("paths is required and must not be empty")
 	}
@@ -1174,6 +1192,7 @@ func (s *Server) handleGitConfig(_ context.Context, req *mcp.CallToolRequest) (*
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 	resp, err := s.engine.GitConfig(args.Repo, engine.GitConfigParams{
 		Key:        args.Key,
 		Regexp:     args.Regexp,
@@ -1230,6 +1249,7 @@ func (s *Server) handleSelf(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
+	args.Format = resolveMCPFormat(args.Format)
 
 	switch args.Action {
 	case "version":
@@ -1282,6 +1302,22 @@ func mustSchema(v any) json.RawMessage {
 		panic("invalid schema: " + err.Error())
 	}
 	return data
+}
+
+// resolveMCPFormat resolves the effective format for an MCP tool call.
+// The MCP schema defaults format to "json", but Go unmarshaling yields "".
+// This consults AIFR_FORMAT when the client didn't send an explicit value.
+func resolveMCPFormat(format string) string {
+	if format != "" {
+		return format
+	}
+	resolved, err := output.ResolveFormat("", []string{"json", "text"}, "json")
+	if err != nil {
+		// Env var contained only unsupported values; fall back to json.
+		// MCP can't exit the process, so we degrade gracefully.
+		return "json"
+	}
+	return resolved
 }
 
 func unmarshalArgs(req *mcp.CallToolRequest, dst any) error {

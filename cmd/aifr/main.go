@@ -42,6 +42,22 @@ that is always safe (never writes) and always scoped (enforces allow/deny lists
 with a built-in sensitive-file blocklist).`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Resolve flagFormat: explicit --format flag > AIFR_FORMAT env > "json".
+		// Pass empty explicit when the flag wasn't set on the command line,
+		// so ResolveFormat consults the environment variable.
+		explicit := flagFormat
+		if !cmd.Flags().Changed("format") {
+			explicit = ""
+		}
+		supported := cliSupportedFormats(cmd)
+		resolved, err := output.ResolveFormat(explicit, supported, "json")
+		if err != nil {
+			return err
+		}
+		flagFormat = resolved
+		return nil
+	},
 }
 
 var versionCmd = &cobra.Command{
@@ -69,7 +85,7 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&flagConfig, "config", "", "config file path")
-	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "json", "output format (json|text)")
+	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "", "output format (json|text); default from $AIFR_FORMAT or json")
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoRedact, "no-redact", false, "do not redact sensitive config values")
 	rootCmd.PersistentFlags().BoolVarP(&flagNumberLines, "number-lines", "n", false, "prefix each line with its file line number")
@@ -180,6 +196,14 @@ func applyNumberLines(v any) {
 			}
 		}
 	}
+}
+
+// cliSupportedFormats returns the list of output formats a command supports.
+func cliSupportedFormats(cmd *cobra.Command) []string {
+	if cmd.Name() == "version" {
+		return []string{"json", "text", "short"}
+	}
+	return []string{"json", "text"}
 }
 
 // loadConfig loads the effective configuration.
