@@ -52,6 +52,7 @@ almost certainly handles it in one call with built-in filtering, limiting, and s
 | `cat file \| head -50` | `aifr_read(path="file", lines="1:50")` |
 | `cat file \| wc -l` | `aifr_wc(paths=["file"], lines=true)` |
 | `cat /etc/passwd \| grep root` | `aifr_getent(database="passwd", key="root")` |
+| `getent passwd \| cut -d: -f5 \| cut -d, -f1` | `aifr_getent(database="passwd", fields=["gecos_name"])` |
 | `git log --oneline \| head -5` | `aifr_log(max_count=5)` |
 | `ls -la \| sort -k5 -n` | `aifr_list(path=".", sort="size")` |
 | `grep -rl pattern . \| wc -l` | `aifr_search` — count results from response |
@@ -82,6 +83,27 @@ When the runtime provides built-in file tools alongside aifr MCP tools:
 
 ## Key Patterns
 
+### Line numbering
+
+`aifr_read` and `aifr_cat` support `number_lines=true` (MCP) or `-n` (CLI)
+to prefix each line with its actual file line number (`%6d\t` format, like
+`cat -n`). Works in both JSON and text output modes. Line ranges are numbered
+correctly — `lines="50:100"` starts numbering at 50.
+
+### Output format and AIFR_FORMAT
+
+All tools support `format` parameter: `"json"` (default) or `"text"`.
+Text mode is more token-efficient for AI consumption.
+
+The `AIFR_FORMAT` environment variable sets the default format. It accepts a
+colon-separated preference list — the first value supported by the tool wins:
+```
+AIFR_FORMAT=text          # all tools default to text
+AIFR_FORMAT=short:text    # "version" uses short; others use text
+```
+
+Explicit `format` parameter (MCP) or `--format` flag (CLI) overrides the env.
+
 ### Multi-file reading (token-efficient)
 
 `aifr_cat` with `format="text"` and `divider="xml"` returns:
@@ -108,6 +130,13 @@ Large files return in chunks with signed continuation tokens:
 - `structured="branches"` — all branches with tracking info
 - `scope="merged"` — full cascade including gitdir: conditional includes
 
+### System databases (getent)
+
+Passwd fields: `name`, `uid`, `gid`, `gecos`, `gecos_name`, `home`, `shell`.
+`gecos_name` is a pseudo-field: extracts the real name from the GECOS field
+(first comma-separated sub-field, with `&` replaced by the login name,
+first letter capitalized — per BSD/finger convention).
+
 ### System inspection
 
 `aifr_sysinfo` sections: `os`, `date`, `hostname`, `uptime`, `network`, `routing`.
@@ -131,8 +160,8 @@ add `--format text` for plain output.
 
 | Command | Key flags | Example |
 |---|---|---|
-| `aifr read` | `--lines START:END`, `--chunk-id TOKEN` | `aifr read --lines 1:50 main.go` |
-| `aifr cat` | `--name GLOB --exclude-path GLOB --lines N --divider xml --format text --max-depth N` | `aifr cat --name '*.go' --format text .` |
+| `aifr read` | `--lines START:END`, `--chunk-id TOKEN`, `-n` (line numbers) | `aifr read -n --lines 1:50 main.go` |
+| `aifr cat` | `--name GLOB --exclude-path GLOB --lines N --divider xml --format text -n --max-depth N` | `aifr cat -n --name '*.go' --format text .` |
 | `aifr list` | `--depth N` (-1=all) `--pattern GLOB --type f/d/l --sort name/size/mtime --limit N` | `aifr list --depth -1 --type f .` |
 | `aifr search` | `--fixed-string --ignore-case --context N --include GLOB --exclude GLOB` | `aifr search --include '*.go' 'Handler' .` |
 | `aifr find` | `--name GLOB --type f/d/l --max-depth N --min-size N --newer-than DUR --sort name/size` | `aifr find --name '*.yaml' .` |
@@ -147,5 +176,5 @@ add `--format text` for plain output.
 | `aifr stash-list` | `--max-count N` | `aifr stash-list` |
 | `aifr git-config` | `--scope merged --identity --remotes --branches --regexp PAT` | `aifr git-config --identity` |
 | `aifr sysinfo` | `--sections os,date,hostname,...` | `aifr sysinfo --sections date` |
-| `aifr getent` | `DATABASE [KEY] --fields NAMES` | `aifr getent passwd --fields name,uid` |
+| `aifr getent` | `DATABASE [KEY] --fields NAMES` | `aifr getent passwd --fields name,gecos_name,home` |
 | `aifr pathfind` | `--search-list SPEC` | `aifr pathfind python3` |

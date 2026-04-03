@@ -70,8 +70,11 @@ Divider formats for --format text:
 		}
 
 		if flagFormat == "text" {
-			output.WriteCatText(os.Stdout, resp, catDivider)
+			output.WriteCatText(os.Stdout, resp, catDivider, flagNumberLines)
 		} else {
+			if flagNumberLines {
+				applyNumberLines(resp)
+			}
 			writeJSON(resp)
 		}
 		return nil

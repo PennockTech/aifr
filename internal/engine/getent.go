@@ -7,6 +7,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"go.pennock.tech/aifr/pkg/protocol"
 )
@@ -31,7 +33,7 @@ var databases = map[string]databaseSpec{
 	"passwd": {
 		path:      "/etc/passwd",
 		delimiter: ":",
-		fields:    []string{"name", "uid", "gid", "gecos", "home", "shell"},
+		fields:    []string{"name", "uid", "gid", "gecos", "gecos_name", "home", "shell"},
 		keyFields: []int{0, 2}, // name (0) and uid (2, after dropping password)
 	},
 	"group": {
@@ -147,15 +149,34 @@ func passwdMapper(parts []string) (map[string]string, []string) {
 		return nil, nil
 	}
 	m := map[string]string{
-		"name":  parts[0],
-		"uid":   parts[2],
-		"gid":   parts[3],
-		"gecos": parts[4],
-		"home":  parts[5],
-		"shell": parts[6],
+		"name":       parts[0],
+		"uid":        parts[2],
+		"gid":        parts[3],
+		"gecos":      parts[4],
+		"gecos_name": gecosName(parts[4], parts[0]),
+		"home":       parts[5],
+		"shell":      parts[6],
 	}
 	// Key candidates: name (parts[0]), uid (parts[2])
 	return m, []string{parts[0], parts[2]}
+}
+
+// gecosName extracts the real name from a GECOS field.
+// Per the BSD convention (universally adopted), the GECOS field is
+// comma-separated with the full name as the first sub-field.
+// The '&' character is replaced by the login name with its first
+// letter uppercased (per finger(1) and chfn(1) convention).
+func gecosName(gecos, login string) string {
+	name, _, _ := strings.Cut(gecos, ",")
+	if !strings.Contains(name, "&") {
+		return name
+	}
+	// Capitalize first rune of login for & replacement.
+	capitalized := login
+	if r, size := utf8.DecodeRuneInString(login); r != utf8.RuneError {
+		capitalized = string(unicode.ToUpper(r)) + login[size:]
+	}
+	return strings.ReplaceAll(name, "&", capitalized)
 }
 
 // groupMapper parses a line from /etc/group.

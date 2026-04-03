@@ -39,7 +39,8 @@ in one call. Examples: `find | xargs grep` → `aifr_search` with `include`,
 `find | xargs cat` → `aifr_cat` with `name`, `cat | head -N` → `aifr_read`
 with `lines`, `cat | wc` → `aifr_wc`, `git log | head` → `aifr_log` with
 `max_count`, `ls | sort` → `aifr_list` with `sort`, `cat /etc/passwd | grep`
-→ `aifr_getent` with `key`.
+→ `aifr_getent` with `key`, `cut -d: -f5 | cut -d, -f1` → `aifr_getent`
+with `fields=["gecos_name"]`.
 
 ### With built-in Read / Grep / Glob tools
 
@@ -55,11 +56,17 @@ Examples: `HEAD:README.md`, `main:src/lib.go`, `v2.0:config.toml`, `HEAD~3:file.
 
 ## Key Patterns
 
+**Line numbers**: `aifr_read(path=..., number_lines=true)` or `aifr_cat(..., number_lines=true)` prefixes each line with its actual file line number. Line ranges are numbered correctly — `lines="50:100"` starts at 50.
+
+**Output format**: All tools accept `format`: `"json"` (default) or `"text"`. Text is more token-efficient. The `AIFR_FORMAT` env var sets the default (colon-separated preference list, first supported value wins). Explicit `format` parameter overrides env.
+
 **Multi-file**: `aifr_cat(root=".", name="*.go", format="text", divider="xml")` → `<file path="...">content</file>` per file. Use `lines` for head mode, `exclude_path` to skip directories.
 
 **Chunked read**: `aifr_read(path=...)` → get continuation token → `aifr_read(path=..., chunk_id="<token>")` → repeat until `complete: true`.
 
 **Git config**: `structured="identity"` for name/email, `structured="remotes"`, `structured="branches"`. Use `scope="merged"` for full cascade with gitdir: includes.
+
+**System databases**: `aifr_getent(database="passwd")`. Passwd fields: `name`, `uid`, `gid`, `gecos`, `gecos_name`, `home`, `shell`. `gecos_name` extracts the real name from GECOS (comma-split, `&` interpolation per BSD/finger convention).
 
 **System info**: `aifr_sysinfo(sections=["date"])` for current date/time/year. Sections: os, date, hostname, uptime, network, routing.
 

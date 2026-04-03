@@ -23,6 +23,7 @@ const (
 	ExitSensitive    = 3
 	ExitNotFound     = 4
 	ExitInvalidArgs  = 10
+	ExitUsage        = 64 // sysexits.h EX_USAGE
 )
 
 // AifrError is a structured error carrying an error code.

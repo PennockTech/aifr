@@ -22,12 +22,14 @@ var (
 	flagFormat       string
 	flagQuiet        bool
 	flagNoRedact     bool
+	flagNumberLines  bool
 	flagVersionShort bool
 )
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(protocol.ExitError)
+		fmt.Fprintf(os.Stderr, "aifr: %s\n", err)
+		os.Exit(protocol.ExitUsage)
 	}
 }
 
@@ -40,6 +42,22 @@ that is always safe (never writes) and always scoped (enforces allow/deny lists
 with a built-in sensitive-file blocklist).`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Resolve flagFormat: explicit --format flag > AIFR_FORMAT env > "json".
+		// Pass empty explicit when the flag wasn't set on the command line,
+		// so ResolveFormat consults the environment variable.
+		explicit := flagFormat
+		if !cmd.Flags().Changed("format") {
+			explicit = ""
+		}
+		supported := cliSupportedFormats(cmd)
+		resolved, err := output.ResolveFormat(explicit, supported, "json")
+		if err != nil {
+			return err
+		}
+		flagFormat = resolved
+		return nil
+	},
 }
 
 var versionCmd = &cobra.Command{
@@ -67,9 +85,10 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&flagConfig, "config", "", "config file path")
-	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "json", "output format (json|text)")
+	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "", "output format (json|text); default from $AIFR_FORMAT or json")
 	rootCmd.PersistentFlags().BoolVar(&flagQuiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&flagNoRedact, "no-redact", false, "do not redact sensitive config values")
+	rootCmd.PersistentFlags().BoolVarP(&flagNumberLines, "number-lines", "n", false, "prefix each line with its file line number")
 
 	versionCmd.Flags().BoolVarP(&flagVersionShort, "short", "s", false, "just the version")
 
@@ -102,6 +121,9 @@ func writeJSON(v any) {
 
 // writeOutput writes the response in the selected format.
 func writeOutput(v any) {
+	if flagNumberLines && flagFormat != "text" {
+		applyNumberLines(v)
+	}
 	if flagFormat != "text" {
 		writeJSON(v)
 		return
@@ -109,7 +131,7 @@ func writeOutput(v any) {
 	w := os.Stdout
 	switch resp := v.(type) {
 	case *protocol.ReadResponse:
-		output.WriteReadText(w, resp)
+		output.WriteReadText(w, resp, flagNumberLines)
 	case *protocol.StatEntry:
 		output.WriteStatText(w, resp)
 	case *protocol.ListResponse:
@@ -120,12 +142,68 @@ func writeOutput(v any) {
 		output.WriteFindText(w, resp)
 	case *protocol.DiffResponse:
 		output.WriteDiffText(w, resp)
+	case *protocol.LogResponse:
+		output.WriteLogText(w, resp)
+	case *protocol.RefsResponse:
+		output.WriteRefsText(w, resp)
+	case *protocol.WcResponse:
+		output.WriteWcText(w, resp)
+	case *protocol.PathfindResponse:
+		output.WritePathfindText(w, resp)
+	case *protocol.HexdumpResponse:
+		output.WriteHexdumpText(w, resp)
+	case *protocol.ChecksumResponse:
+		output.WriteChecksumText(w, resp)
+	case *protocol.RevParseResponse:
+		output.WriteRevParseText(w, resp)
+	case *protocol.ReflogResponse:
+		output.WriteReflogText(w, resp)
+	case *protocol.SysinfoResponse:
+		output.WriteSysinfoText(w, resp)
+	case *protocol.GetentResponse:
+		output.WriteGetentText(w, resp)
+	case *protocol.GitConfigResponse:
+		output.WriteGitConfigText(w, resp)
+	case *protocol.GitConfigStructuredResponse:
+		output.WriteGitConfigStructuredText(w, resp)
+	case *protocol.CatResponse:
+		output.WriteCatText(w, resp, "plain", flagNumberLines)
 	case *protocol.ErrorResponse:
 		output.WriteErrorText(w, resp.Error)
 	default:
 		// Types without a dedicated text formatter fall back to JSON.
 		writeJSON(v)
 	}
+}
+
+// applyNumberLines mutates response content to include line numbers (for JSON mode).
+// In text mode, the text formatters handle numbering directly.
+func applyNumberLines(v any) {
+	switch resp := v.(type) {
+	case *protocol.ReadResponse:
+		if resp.Chunk != nil && resp.Chunk.Encoding == "utf-8" {
+			startLine := resp.Chunk.StartLine
+			if startLine < 1 {
+				startLine = 1
+			}
+			resp.Chunk.Data = output.NumberLines(resp.Chunk.Data, startLine)
+		}
+	case *protocol.CatResponse:
+		for i := range resp.Files {
+			entry := &resp.Files[i]
+			if entry.Content != "" && !entry.Binary && entry.Error == "" {
+				entry.Content = output.NumberLines(entry.Content, 1)
+			}
+		}
+	}
+}
+
+// cliSupportedFormats returns the list of output formats a command supports.
+func cliSupportedFormats(cmd *cobra.Command) []string {
+	if cmd.Name() == "version" {
+		return []string{"json", "text", "short"}
+	}
+	return []string{"json", "text"}
 }
 
 // loadConfig loads the effective configuration.

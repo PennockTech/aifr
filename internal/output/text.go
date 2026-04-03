@@ -15,11 +15,39 @@ func WriteStatText(w io.Writer, entry *protocol.StatEntry) {
 		entry.Mode, entry.Type, entry.Size, entry.ModTime, entry.Path)
 }
 
+// NumberLines prepends line numbers to each line in data, starting at startLine.
+// Format matches cat -n: right-justified 6-wide number, tab, then content.
+func NumberLines(data string, startLine int) string {
+	if data == "" {
+		return data
+	}
+	lines := strings.Split(data, "\n")
+	// If data ends with \n, Split produces a trailing empty element — drop it.
+	trailingNewline := strings.HasSuffix(data, "\n")
+	if trailingNewline && len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	var buf strings.Builder
+	for i, line := range lines {
+		fmt.Fprintf(&buf, "%6d\t%s\n", startLine+i, line)
+	}
+	return buf.String()
+}
+
 // WriteReadText writes read response data in human-readable format.
-func WriteReadText(w io.Writer, resp *protocol.ReadResponse) {
+// If numberLines is true, each line is prefixed with its file line number.
+func WriteReadText(w io.Writer, resp *protocol.ReadResponse, numberLines bool) {
 	if resp.Chunk != nil && resp.Chunk.Encoding == "utf-8" {
-		io.WriteString(w, resp.Chunk.Data) //nolint:errcheck
-		if !strings.HasSuffix(resp.Chunk.Data, "\n") {
+		data := resp.Chunk.Data
+		if numberLines {
+			startLine := resp.Chunk.StartLine
+			if startLine < 1 {
+				startLine = 1
+			}
+			data = NumberLines(data, startLine)
+		}
+		io.WriteString(w, data) //nolint:errcheck
+		if !strings.HasSuffix(data, "\n") {
 			io.WriteString(w, "\n") //nolint:errcheck
 		}
 	}
@@ -91,7 +119,8 @@ func WriteDiffText(w io.Writer, resp *protocol.DiffResponse) {
 
 // WriteCatText writes a cat response with the specified divider format.
 // Divider is one of "plain", "xml", or "none".
-func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
+// If numberLines is true, each file's content is prefixed with line numbers starting at 1.
+func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string, numberLines bool) {
 	for _, entry := range resp.Files {
 		displayPath := entry.RelPath
 		if displayPath == "" {
@@ -100,11 +129,11 @@ func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
 
 		switch divider {
 		case "xml":
-			writeCatXML(w, entry, displayPath)
+			writeCatXML(w, entry, displayPath, numberLines)
 		case "none":
-			writeCatNone(w, entry)
+			writeCatNone(w, entry, numberLines)
 		default: // "plain"
-			writeCatPlain(w, entry, displayPath)
+			writeCatPlain(w, entry, displayPath, numberLines)
 		}
 	}
 
@@ -122,7 +151,14 @@ func WriteCatText(w io.Writer, resp *protocol.CatResponse, divider string) {
 	}
 }
 
-func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string) {
+func numberContent(content string, numberLines bool) string {
+	if !numberLines || content == "" {
+		return content
+	}
+	return NumberLines(content, 1)
+}
+
+func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string, numberLines bool) {
 	switch {
 	case entry.Error != "":
 		fmt.Fprintf(w, "--- %s (error: %s) ---\n", path, entry.Error)
@@ -130,14 +166,15 @@ func writeCatPlain(w io.Writer, entry protocol.CatEntry, path string) {
 		fmt.Fprintf(w, "--- %s (binary, skipped) ---\n", path)
 	default:
 		fmt.Fprintf(w, "--- %s ---\n", path)
-		io.WriteString(w, entry.Content) //nolint:errcheck
-		if len(entry.Content) > 0 && entry.Content[len(entry.Content)-1] != '\n' {
+		content := numberContent(entry.Content, numberLines)
+		io.WriteString(w, content) //nolint:errcheck
+		if len(content) > 0 && content[len(content)-1] != '\n' {
 			io.WriteString(w, "\n") //nolint:errcheck
 		}
 	}
 }
 
-func writeCatXML(w io.Writer, entry protocol.CatEntry, path string) {
+func writeCatXML(w io.Writer, entry protocol.CatEntry, path string, numberLines bool) {
 	switch {
 	case entry.Error != "":
 		fmt.Fprintf(w, "<file path=%q error=%q />\n", path, entry.Error)
@@ -145,17 +182,250 @@ func writeCatXML(w io.Writer, entry protocol.CatEntry, path string) {
 		fmt.Fprintf(w, "<file path=%q binary=\"true\" />\n", path)
 	default:
 		fmt.Fprintf(w, "<file path=%q>\n", path)
-		io.WriteString(w, entry.Content) //nolint:errcheck
-		if len(entry.Content) > 0 && entry.Content[len(entry.Content)-1] != '\n' {
+		content := numberContent(entry.Content, numberLines)
+		io.WriteString(w, content) //nolint:errcheck
+		if len(content) > 0 && content[len(content)-1] != '\n' {
 			io.WriteString(w, "\n") //nolint:errcheck
 		}
 		fmt.Fprintln(w, "</file>")
 	}
 }
 
-func writeCatNone(w io.Writer, entry protocol.CatEntry) {
+func writeCatNone(w io.Writer, entry protocol.CatEntry, numberLines bool) {
 	if entry.Error != "" || entry.Binary {
 		return // skip silently in none mode
 	}
-	io.WriteString(w, entry.Content) //nolint:errcheck
+	content := numberContent(entry.Content, numberLines)
+	io.WriteString(w, content) //nolint:errcheck
+}
+
+// WriteLogText writes a git log response in human-readable format.
+func WriteLogText(w io.Writer, resp *protocol.LogResponse) {
+	for _, e := range resp.Entries {
+		fmt.Fprintf(w, "%s %s <%s> %s\n", e.Hash[:12], e.Author, e.AuthorEmail, e.Date)
+		fmt.Fprintf(w, "  %s\n", e.Message)
+		for _, f := range e.FilesChanged {
+			fmt.Fprintf(w, "  M %s\n", f)
+		}
+	}
+}
+
+// WriteRefsText writes git refs in human-readable format.
+func WriteRefsText(w io.Writer, resp *protocol.RefsResponse) {
+	for _, r := range resp.Refs {
+		if r.Remote != "" {
+			fmt.Fprintf(w, "%s  %s  %s/%s\n", r.Hash[:12], r.Type, r.Remote, r.Name)
+		} else {
+			fmt.Fprintf(w, "%s  %s  %s\n", r.Hash[:12], r.Type, r.Name)
+		}
+	}
+}
+
+// WriteWcText writes word-count results in compact text format.
+// When a single count field is active and total_only is set, emits just the number.
+// Otherwise emits key=value pairs per line.
+func WriteWcText(w io.Writer, resp *protocol.WcResponse) {
+	// Determine which fields are present by checking the total entry.
+	fields := wcActiveFields(&resp.Total)
+	singleField := len(fields) == 1
+
+	for _, e := range resp.Entries {
+		if e.Error != "" {
+			fmt.Fprintf(w, "%s: error: %s\n", e.Path, e.Error)
+			continue
+		}
+		writeWcEntry(w, &e, fields, singleField, e.Path)
+	}
+
+	// Print total line if multiple files.
+	if len(resp.Entries) > 1 {
+		writeWcEntry(w, &resp.Total, fields, singleField, "total")
+	} else if len(resp.Entries) == 0 {
+		// total_only mode: just the total.
+		writeWcEntry(w, &resp.Total, fields, singleField, "")
+	}
+}
+
+type wcField struct {
+	key string
+	val string
+}
+
+func wcActiveFields(e *protocol.WcEntry) []string {
+	var fields []string
+	if e.Lines != nil {
+		fields = append(fields, "lines")
+	}
+	if e.Words != nil {
+		fields = append(fields, "words")
+	}
+	if e.Bytes != nil {
+		fields = append(fields, "bytes")
+	}
+	if e.Chars != nil {
+		fields = append(fields, "chars")
+	}
+	return fields
+}
+
+func wcFieldValue(e *protocol.WcEntry, key string) string {
+	switch key {
+	case "lines":
+		if e.Lines != nil {
+			return fmt.Sprintf("%d", *e.Lines)
+		}
+	case "words":
+		if e.Words != nil {
+			return fmt.Sprintf("%d", *e.Words)
+		}
+	case "bytes":
+		if e.Bytes != nil {
+			return fmt.Sprintf("%d", *e.Bytes)
+		}
+	case "chars":
+		if e.Chars != nil {
+			return fmt.Sprintf("%d", *e.Chars)
+		}
+	}
+	return ""
+}
+
+func writeWcEntry(w io.Writer, e *protocol.WcEntry, fields []string, singleField bool, label string) {
+	if singleField {
+		v := wcFieldValue(e, fields[0])
+		if label == "" {
+			fmt.Fprintf(w, "%s\n", v)
+		} else {
+			fmt.Fprintf(w, "%s %s\n", v, label)
+		}
+		return
+	}
+	var parts []string
+	for _, f := range fields {
+		parts = append(parts, f+"="+wcFieldValue(e, f))
+	}
+	line := strings.Join(parts, " ")
+	if label != "" {
+		fmt.Fprintf(w, "%s %s\n", line, label)
+	} else {
+		fmt.Fprintf(w, "%s\n", line)
+	}
+}
+
+// WritePathfindText writes pathfind results in human-readable format.
+func WritePathfindText(w io.Writer, resp *protocol.PathfindResponse) {
+	for _, e := range resp.Entries {
+		masked := ""
+		if e.Masked {
+			masked = fmt.Sprintf(" (masked by %s)", e.MaskedBy)
+		}
+		fmt.Fprintf(w, "%s%s\n", e.Path, masked)
+	}
+}
+
+// WriteHexdumpText writes a hex dump in canonical format.
+func WriteHexdumpText(w io.Writer, resp *protocol.HexdumpResponse) {
+	for _, line := range resp.Lines {
+		fmt.Fprintf(w, "%08x  %s  |%s|\n", line.Offset, line.Hex, line.ASCII)
+	}
+}
+
+// WriteChecksumText writes checksums in the standard hash-space-path format.
+func WriteChecksumText(w io.Writer, resp *protocol.ChecksumResponse) {
+	for _, e := range resp.Entries {
+		if e.Error != "" {
+			fmt.Fprintf(w, "%s: error: %s\n", e.Path, e.Error)
+			continue
+		}
+		fmt.Fprintf(w, "%s  %s\n", e.Checksum, e.Path)
+	}
+}
+
+// WriteRevParseText writes a resolved ref in compact format.
+func WriteRevParseText(w io.Writer, resp *protocol.RevParseResponse) {
+	fmt.Fprintf(w, "%s %s <%s> %s\n", resp.Hash, resp.AuthorName, resp.AuthorEmail, resp.Date)
+	if resp.Subject != "" {
+		fmt.Fprintf(w, "  %s\n", resp.Subject)
+	}
+}
+
+// WriteReflogText writes reflog entries in human-readable format.
+func WriteReflogText(w io.Writer, resp *protocol.ReflogResponse) {
+	for _, e := range resp.Entries {
+		fmt.Fprintf(w, "%s %s %s %s\n", e.NewHash[:12], e.Date, e.Author, e.Action)
+	}
+}
+
+// WriteSysinfoText writes system info in human-readable format.
+func WriteSysinfoText(w io.Writer, resp *protocol.SysinfoResponse) {
+	if resp.OS != nil {
+		fmt.Fprintf(w, "os: %s %s %s\n", resp.OS.Kernel, resp.OS.Release, resp.OS.Arch)
+		if resp.OS.Distro != "" {
+			fmt.Fprintf(w, "distro: %s\n", resp.OS.Distro)
+		}
+	}
+	if resp.Date != nil {
+		fmt.Fprintf(w, "date: %s (%s)\n", resp.Date.UTC, resp.Date.Timezone)
+	}
+	if resp.Hostname != "" {
+		fmt.Fprintf(w, "hostname: %s\n", resp.Hostname)
+	}
+	if resp.Uptime != nil {
+		fmt.Fprintf(w, "uptime: %s\n", resp.Uptime.Human)
+	}
+	for _, iface := range resp.Network {
+		fmt.Fprintf(w, "net %s: %s\n", iface.Name, strings.Join(iface.Addresses, ", "))
+	}
+	for _, r := range resp.Routing {
+		fmt.Fprintf(w, "route %s via %s dev %s\n", r.Destination, r.Gateway, r.Interface)
+	}
+}
+
+// WriteGetentText writes getent results in human-readable format.
+func WriteGetentText(w io.Writer, resp *protocol.GetentResponse) {
+	for _, e := range resp.Entries {
+		var parts []string
+		for _, f := range resp.Fields {
+			if v, ok := e.Fields[f]; ok {
+				parts = append(parts, f+"="+v)
+			}
+		}
+		fmt.Fprintln(w, strings.Join(parts, " "))
+	}
+}
+
+// WriteGitConfigText writes git config entries in human-readable format.
+func WriteGitConfigText(w io.Writer, resp *protocol.GitConfigResponse) {
+	for _, e := range resp.Entries {
+		fmt.Fprintf(w, "%s=%s\n", e.Key, e.Value)
+	}
+}
+
+// WriteGitConfigStructuredText writes structured git config in human-readable format.
+func WriteGitConfigStructuredText(w io.Writer, resp *protocol.GitConfigStructuredResponse) {
+	if resp.Identity != nil {
+		id := resp.Identity
+		if id.UserName != "" {
+			fmt.Fprintf(w, "user.name=%s\n", id.UserName)
+		}
+		if id.UserEmail != "" {
+			fmt.Fprintf(w, "user.email=%s\n", id.UserEmail)
+		}
+	}
+	for _, r := range resp.Remotes {
+		for _, u := range r.URLs {
+			fmt.Fprintf(w, "remote.%s.url=%s\n", r.Name, u)
+		}
+		for _, f := range r.Fetch {
+			fmt.Fprintf(w, "remote.%s.fetch=%s\n", r.Name, f)
+		}
+	}
+	for _, b := range resp.Branches {
+		if b.Remote != "" {
+			fmt.Fprintf(w, "branch.%s.remote=%s\n", b.Name, b.Remote)
+		}
+		if b.Merge != "" {
+			fmt.Fprintf(w, "branch.%s.merge=%s\n", b.Name, b.Merge)
+		}
+	}
 }
