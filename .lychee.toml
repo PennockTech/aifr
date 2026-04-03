@@ -1,0 +1,11 @@
+# Configuration for lychee link checker (https://github.com/lycheeverse/lychee)
+# Used by CI link checking.
+
+# Only check local links in CI (no network requests).
+offline = true
+
+# Validate heading anchors in markdown links.
+include_fragments = true
+
+# Glob pattern for files to check.
+# (Can be overridden by CLI args in the workflow.)

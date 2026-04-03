@@ -1,0 +1,12 @@
+# Configuration for typos (https://github.com/crate-ci/typos)
+# Used by CI spell-checking.
+
+[files]
+extend-exclude = [
+    "go.sum",
+]
+
+[default.extend-words]
+# Project-specific terms that are not typos.
+# Format: word = "word"  (map to itself to accept it)
+aifr = "aifr"
