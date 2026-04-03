@@ -13,6 +13,9 @@ allow = [
 
 # Explicit deny patterns. Evaluated AFTER allow, so deny wins.
 # The built-in sensitive-file list is always active in addition to this.
+# The "current working directory" overrides this: if the user is in this
+# dir, they can just use commands directly, we're only protecting against
+# wandering filesystem reading.
 deny = [
   "~/projects/secrets/**",
   "**/.env.production",
