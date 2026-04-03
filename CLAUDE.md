@@ -46,7 +46,7 @@ task clean          # remove binary + coverage files
 
 Always run `task fmt` and `task tidy` after modifying Go files.
 
-### If `task` is not availabile
+### If `task` is not available
 
 Build with `go build ./cmd/aifr/`, perhaps using `GOTOOLCHAIN` in environ as
 appropriate.  Use the standard Go tooling for other build/test actions.
