@@ -17,7 +17,15 @@ import (
 // openGitRepo opens a git repository and checks access control for
 // filesystem-path repos. Named repos and CWD auto-detect skip the
 // access check since they are admin-configured or implicitly allowed.
+//
+// Bare "." is normalized to "" (auto-detect) since it means "this
+// directory" — semantically identical to the no-argument case. Other
+// relative paths ("./sub", "..", "../other") remain subject to access
+// control because they may reference a different repository.
 func (e *Engine) openGitRepo(repoIdentifier string) (*git.Repository, string, error) {
+	if repoIdentifier == "." {
+		repoIdentifier = ""
+	}
 	repo, repoPath, err := e.gitProvider.OpenRepo(repoIdentifier)
 	if err != nil {
 		return nil, "", err
