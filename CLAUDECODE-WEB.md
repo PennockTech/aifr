@@ -16,5 +16,5 @@ and then in future shell invocations, put `GOTOOLCHAIN=go1.26.1` into the enviro
 you do NOT need to modify NO_PROXY or IFS, that was a one-shot for the initial download.
 The required Go version should now be installed.
 
-You do not need `task` installed to build for dev-work;
-just use: `GOTOOLCHAIN=go1.26.1 go build ./cmd/aifr/`
+Look for a `CLAUDE.md` or `AGENTS.md` file in this directory and read those if
+they exist.

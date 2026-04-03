@@ -32,6 +32,8 @@ skills/aifr/        External skill file (users symlink into ~/.claude/skills/)
 
 ## Building and Testing
 
+### If `task` is available
+
 ```sh
 task build          # build ./aifr binary with version ldflags
 task test           # go test -count=1 -race ./...
@@ -43,6 +45,11 @@ task clean          # remove binary + coverage files
 ```
 
 Always run `task fmt` and `task tidy` after modifying Go files.
+
+### If `task` is not availabile
+
+Build with `go build ./cmd/aifr/`, perhaps using `GOTOOLCHAIN` in environ as
+appropriate.  Use the standard Go tooling for other build/test actions.
 
 ## Adding a New Command
 
