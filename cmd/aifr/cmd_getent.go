@@ -24,7 +24,7 @@ Databases: passwd, group, services, protocols
 Key: optional name or numeric ID to look up a single entry
 Fields: comma-separated list to restrict output (default: all)
 
-Passwd fields:    name, uid, gid, gecos, home, shell
+Passwd fields:    name, uid, gid, gecos, gecos_name, home, shell
 Group fields:     name, gid, members
 Services fields:  name, port, protocol, aliases
 Protocols fields: name, number, aliases

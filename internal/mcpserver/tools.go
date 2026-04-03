@@ -850,7 +850,7 @@ func toolGetent() *mcp.Tool {
 	return &mcp.Tool{
 		Name: "aifr_getent",
 		Description: `Query system databases (passwd, group, services, protocols) without shell pipelines. Reads /etc flat files directly. Supports key lookup by name or numeric ID. Use fields to restrict output columns.
-Passwd fields: name, uid, gid, gecos, home, shell. Group fields: name, gid, members. Services fields: name, port, protocol, aliases. Protocols fields: name, number, aliases.`,
+Passwd fields: name, uid, gid, gecos, gecos_name, home, shell. gecos_name is a pseudo-field that extracts the real name from the GECOS field (comma-split, & interpolation). Group fields: name, gid, members. Services fields: name, port, protocol, aliases. Protocols fields: name, number, aliases.`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
