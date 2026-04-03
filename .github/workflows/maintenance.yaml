@@ -33,7 +33,8 @@ jobs:
 
   zizmor-audit:
     name: Audit workflows
-    runs-on: ubuntu-slim
+    # zizmor-action uses Docker, thus ubuntu-latest ipv ubuntu-slim
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
