@@ -74,7 +74,9 @@ jobs:
       pull-requests: write   # create a PR
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # zizmor: persist-credentials is intentionally left at default (true)
+      # because this job needs to push a branch to create a PR.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 # zizmor: ignore[artipacked]
 
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:

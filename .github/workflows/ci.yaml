@@ -177,12 +177,17 @@ jobs:
 
     steps:
       - name: Check job results
+        env:
+          RESULT_GO: ${{ needs.go-checks.result }}
+          RESULT_GORELEASER: ${{ needs.goreleaser-check.result }}
+          RESULT_MARKDOWN: ${{ needs.markdown-checks.result }}
+          RESULT_WORKFLOWS: ${{ needs.workflow-checks.result }}
         run: |
           results=(
-            "${{ needs.go-checks.result }}"
-            "${{ needs.goreleaser-check.result }}"
-            "${{ needs.markdown-checks.result }}"
-            "${{ needs.workflow-checks.result }}"
+            "$RESULT_GO"
+            "$RESULT_GORELEASER"
+            "$RESULT_MARKDOWN"
+            "$RESULT_WORKFLOWS"
           )
           failed=0
           for r in "${results[@]}"; do
