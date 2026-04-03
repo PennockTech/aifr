@@ -121,21 +121,10 @@ func writeJSON(v any) {
 
 // writeOutput writes the response in the selected format.
 func writeOutput(v any) {
-	// Handle oneline format for log commands.
-	if flagFormat == "oneline" {
-		if resp, ok := v.(*protocol.LogResponse); ok {
-			output.WriteLogOneline(os.Stdout, resp)
-			return
-		}
-		// Non-log types fall through to JSON.
-		writeJSON(v)
-		return
-	}
-
-	if flagNumberLines && flagFormat != "text" {
+	if flagNumberLines && flagFormat != "text" && flagFormat != "oneline" {
 		applyNumberLines(v)
 	}
-	if flagFormat != "text" {
+	if flagFormat != "text" && flagFormat != "oneline" {
 		writeJSON(v)
 		return
 	}
@@ -154,9 +143,12 @@ func writeOutput(v any) {
 	case *protocol.DiffResponse:
 		output.WriteDiffText(w, resp)
 	case *protocol.LogResponse:
-		if logDivider == "xml" {
+		switch {
+		case flagFormat == "oneline":
+			output.WriteLogOneline(w, resp)
+		case logDivider == "xml":
 			output.WriteLogXML(w, resp)
-		} else {
+		default:
 			output.WriteLogText(w, resp)
 		}
 	case *protocol.RefsResponse:
