@@ -109,7 +109,7 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
 
       - uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
         with:
@@ -139,17 +139,17 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true  # zizmor: ignore[cache-poisoning] because we don't cut a release, only test we can build
 
       - uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
         with:
           version: 3.x
 
       - name: Install GoReleaser
-        run: go install github.com/goreleaser/goreleaser/v2@latest
-
-      - name: Validate goreleaser config
-        run: goreleaser check
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+        with:
+          args: check
+          # We also rely upon it being installed, for the `task release:snapshot` below
 
       - name: Test snapshot build
         run: task release:snapshot
