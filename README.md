@@ -58,8 +58,11 @@ claude mcp add --scope user aifr -- aifr mcp
 ```
 
 This registers `aifr` as an MCP server using stdio transport. Claude Code
-will then have access to `aifr_read`, `aifr_cat`, `aifr_stat`, `aifr_list`,
-`aifr_search`, `aifr_find`, `aifr_refs`, `aifr_log`, and `aifr_diff` tools.
+will then have access to all 20 aifr tools (`aifr_read`, `aifr_cat`,
+`aifr_stat`, `aifr_list`, `aifr_search`, `aifr_find`, `aifr_refs`,
+`aifr_log`, `aifr_diff`, `aifr_wc`, `aifr_hexdump`, `aifr_checksum`,
+`aifr_pathfind`, `aifr_rev_parse`, `aifr_reflog`, `aifr_stash_list`,
+`aifr_sysinfo`, `aifr_getent`, `aifr_git_config`, `aifr_self`).
 
 ### Skill File
 
@@ -109,6 +112,10 @@ aifr cat --name '*.go' --exclude-path '**/vendor/**' .
 # Head: first 10 lines of each Go file with dividers
 aifr cat --name '*.go' --lines 10 --divider plain --format text .
 
+# Read with line numbers (like cat -n, but showing actual file line numbers)
+aifr read -n src/main.go
+aifr read -n --lines 50:100 src/main.go    # lines 50–100, numbered correctly
+
 # Search for a pattern
 aifr search 'func.*Handler' ./src/
 
@@ -124,10 +131,45 @@ aifr log --max-count 5
 
 # Compare files across refs
 aifr diff HEAD~1:README.md README.md
+
+# Count lines/words/bytes
+aifr wc src/main.go
+aifr wc --lines src/*.go              # just line counts
+
+# System databases
+aifr getent passwd root
+aifr getent passwd --fields name,gecos_name,home
+
+# System inspection
+aifr sysinfo --categories os,network
 ```
 
 All commands output JSON by default. Use `--format text` for human-readable
-output.
+output. Line numbering (`-n` / `--number-lines`) is available on `read` and
+`cat` in both formats.
+
+
+### Output Format
+
+The default output format is JSON. Use `--format text` for human-readable,
+token-efficient output suitable for AI agents and shell pipelines.
+
+Set the `AIFR_FORMAT` environment variable to change the default:
+
+```sh
+export AIFR_FORMAT=text              # all commands default to text
+aifr getent passwd root              # text output
+aifr getent passwd root --format json  # flag overrides env
+```
+
+`AIFR_FORMAT` accepts a colon-separated preference list — the first format
+supported by the invoked command wins:
+
+```sh
+export AIFR_FORMAT=short:text:json   # "version" uses short; others use text
+```
+
+Invalid values produce a diagnostic on stderr and exit 64 (`EX_USAGE`).
 
 
 ## Configuration
@@ -167,21 +209,32 @@ Run `aifr sensitive` to see the full pattern list.
 
 ## Commands
 
-| Command     | Description                                                 |
-| ----------- | ----------------------------------------------------------- |
-| `read`      | Read file contents (chunked, with continuation tokens)      |
-| `cat`       | Concatenate multiple files with dividers (find+cat in one)  |
-| `stat`      | File/directory metadata                                     |
-| `list`      | Directory listing with depth, pattern, type filters         |
-| `search`    | Content search (RE2 regexp, context lines, include/exclude) |
-| `find`      | Find files by name, type, size, age                         |
-| `diff`      | Compare files or git refs                                   |
-| `refs`      | List git branches, tags, remotes                            |
-| `log`       | Git commit log with files changed                           |
-| `config`    | Show effective configuration                                |
-| `sensitive` | List built-in sensitive file patterns                       |
-| `skill`     | Emit SKILL.md for Claude Code                               |
-| `mcp`       | Start MCP server (stdio or HTTP)                            |
+| Command      | Description                                                 |
+| ------------ | ----------------------------------------------------------- |
+| `read`       | Read file contents (chunked, with continuation tokens)      |
+| `cat`        | Concatenate multiple files with dividers (find+cat in one)  |
+| `stat`       | File/directory metadata                                     |
+| `list`       | Directory listing with depth, pattern, type filters         |
+| `search`     | Content search (RE2 regexp, context lines, include/exclude) |
+| `find`       | Find files by name, type, size, age                         |
+| `diff`       | Compare files or git refs                                   |
+| `wc`         | Count lines, words, and bytes                               |
+| `hexdump`    | Hex dump of file contents                                   |
+| `checksum`   | Compute file checksums                                      |
+| `refs`       | List git branches, tags, remotes                            |
+| `log`        | Git commit log with files changed                           |
+| `reflog`     | Show git reflog for a ref                                   |
+| `stash-list` | List git stashes                                            |
+| `rev-parse`  | Resolve a git ref to a commit hash                          |
+| `git-config` | Query git configuration                                     |
+| `pathfind`   | Find commands in PATH-like search lists                     |
+| `getent`     | Query system databases (passwd, group, services, protocols) |
+| `sysinfo`    | System inspection for fault diagnosis                       |
+| `config`     | Show effective configuration                                |
+| `sensitive`  | List built-in sensitive file patterns                       |
+| `skill`      | Emit SKILL.md for Claude Code                               |
+| `mcp`        | Start MCP server (stdio or HTTP)                            |
+| `version`    | Print version information                                   |
 
 
 ## Git Path Syntax
