@@ -726,33 +726,146 @@ func TestNumberContent(t *testing.T) {
 // ── WriteLogText ──
 
 func TestWriteLogText(t *testing.T) {
-	resp := &protocol.LogResponse{
-		Entries: []protocol.LogEntry{
-			{
-				Hash:         "abc123def456abc123def456abc123def456abcdef",
-				Author:       "Alice",
-				AuthorEmail:  "alice@example.com",
-				Date:         "2026-01-01T00:00:00Z",
-				Message:      "initial commit",
-				FilesChanged: []string{"README.md"},
+	t.Run("basic single commit with legacy FilesChanged", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:         "abc123def456abc123def456abc123def456abcdef",
+					Author:       "Alice",
+					AuthorEmail:  "alice@example.com",
+					Date:         "2026-01-01T00:00:00Z",
+					Message:      "initial commit",
+					FilesChanged: []string{"README.md"},
+				},
 			},
-		},
-	}
-	var buf strings.Builder
-	WriteLogText(&buf, resp)
-	got := buf.String()
-	if !strings.Contains(got, "abc123def456") {
-		t.Errorf("expected hash prefix, got %q", got)
-	}
-	if !strings.Contains(got, "Alice") {
-		t.Errorf("expected author, got %q", got)
-	}
-	if !strings.Contains(got, "initial commit") {
-		t.Errorf("expected message, got %q", got)
-	}
-	if !strings.Contains(got, "M README.md") {
-		t.Errorf("expected changed file, got %q", got)
-	}
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "commit abc123def456") {
+			t.Errorf("expected 'commit' header with hash prefix, got %q", got)
+		}
+		if !strings.Contains(got, "Author: Alice <alice@example.com>") {
+			t.Errorf("expected Author line, got %q", got)
+		}
+		if !strings.Contains(got, "Date:   2026-01-01T00:00:00Z") {
+			t.Errorf("expected Date line, got %q", got)
+		}
+		if !strings.Contains(got, "    initial commit") {
+			t.Errorf("expected indented message, got %q", got)
+		}
+		if !strings.Contains(got, "M README.md") {
+			t.Errorf("expected changed file with M action, got %q", got)
+		}
+	})
+
+	t.Run("changes field preferred over files_changed", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "abc123def456abc123def456abc123def456abcdef",
+					Author:      "Bob",
+					AuthorEmail: "bob@example.com",
+					Date:        "2026-02-01T00:00:00Z",
+					Message:     "add and delete",
+					Changes: []protocol.FileChange{
+						{Path: "new.go", Action: "A"},
+						{Path: "old.go", Action: "D"},
+					},
+					FilesChanged: []string{"new.go", "old.go"},
+				},
+			},
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "A new.go") {
+			t.Errorf("expected 'A new.go', got %q", got)
+		}
+		if !strings.Contains(got, "D old.go") {
+			t.Errorf("expected 'D old.go', got %q", got)
+		}
+	})
+
+	t.Run("multi-line message splits subject and body", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "abc123def456abc123def456abc123def456abcdef",
+					Author:      "Carol",
+					AuthorEmail: "carol@example.com",
+					Date:        "2026-03-01T00:00:00Z",
+					Message:     "feat: add logging\n\nThis adds structured logging\nto all HTTP handlers.",
+				},
+			},
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "    feat: add logging\n") {
+			t.Errorf("expected indented subject, got %q", got)
+		}
+		if !strings.Contains(got, "    This adds structured logging\n") {
+			t.Errorf("expected indented body line 1, got %q", got)
+		}
+		if !strings.Contains(got, "    to all HTTP handlers.\n") {
+			t.Errorf("expected indented body line 2, got %q", got)
+		}
+	})
+
+	t.Run("blank line between multiple commits", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "aaa111222333aaa111222333aaa111222333aaa111",
+					Author:      "A",
+					AuthorEmail: "a@x.com",
+					Date:        "2026-01-01T00:00:00Z",
+					Message:     "first",
+				},
+				{
+					Hash:        "bbb444555666bbb444555666bbb444555666bbb444",
+					Author:      "B",
+					AuthorEmail: "b@x.com",
+					Date:        "2026-01-02T00:00:00Z",
+					Message:     "second",
+				},
+			},
+			Complete: true,
+		}
+		var buf strings.Builder
+		WriteLogText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "\n\ncommit bbb444555666") {
+			t.Errorf("expected blank line separator between commits, got %q", got)
+		}
+	})
+
+	t.Run("continuation message when incomplete", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:        "abc123def456abc123def456abc123def456abcdef",
+					Author:      "A",
+					AuthorEmail: "a@x.com",
+					Date:        "2026-01-01T00:00:00Z",
+					Message:     "first",
+				},
+			},
+			Total:        1,
+			Complete:     false,
+			Continuation: "tok123",
+		}
+		var buf strings.Builder
+		WriteLogText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "1 commits shown") {
+			t.Errorf("expected continuation message, got %q", got)
+		}
+	})
 }
 
 // ── WriteRefsText ──

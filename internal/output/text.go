@@ -200,14 +200,64 @@ func writeCatNone(w io.Writer, entry protocol.CatEntry, numberLines bool) {
 }
 
 // WriteLogText writes a git log response in human-readable format.
+//
+// The output mimics familiar git-log style with clear visual separation
+// between commits. Multi-line commit messages are split into a subject
+// line and indented body. File changes use A/M/D action indicators
+// (from the Changes field) when available, falling back to "M" for
+// the legacy FilesChanged field.
 func WriteLogText(w io.Writer, resp *protocol.LogResponse) {
-	for _, e := range resp.Entries {
-		fmt.Fprintf(w, "%s %s <%s> %s\n", e.Hash[:12], e.Author, e.AuthorEmail, e.Date)
-		fmt.Fprintf(w, "  %s\n", e.Message)
-		for _, f := range e.FilesChanged {
-			fmt.Fprintf(w, "  M %s\n", f)
+	for i, e := range resp.Entries {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		hash := e.Hash
+		if len(hash) > 12 {
+			hash = hash[:12]
+		}
+		fmt.Fprintf(w, "commit %s\n", hash)
+		fmt.Fprintf(w, "Author: %s <%s>\n", e.Author, e.AuthorEmail)
+		fmt.Fprintf(w, "Date:   %s\n", e.Date)
+
+		// Split message into subject and body.
+		subject, body := splitMessage(e.Message)
+		fmt.Fprintf(w, "\n    %s\n", subject)
+		if body != "" {
+			fmt.Fprintln(w)
+			for _, line := range strings.Split(body, "\n") {
+				fmt.Fprintf(w, "    %s\n", line)
+			}
+		}
+
+		// Prefer Changes (with action) over legacy FilesChanged.
+		if len(e.Changes) > 0 {
+			fmt.Fprintln(w)
+			for _, ch := range e.Changes {
+				fmt.Fprintf(w, "  %s %s\n", ch.Action, ch.Path)
+			}
+		} else if len(e.FilesChanged) > 0 {
+			fmt.Fprintln(w)
+			for _, f := range e.FilesChanged {
+				fmt.Fprintf(w, "  M %s\n", f)
+			}
 		}
 	}
+
+	if !resp.Complete && resp.Continuation != "" {
+		fmt.Fprintf(w, "\n... %d commits shown, more available with continuation token\n", resp.Total)
+	}
+}
+
+// splitMessage separates a commit message into subject (first line) and body (rest).
+func splitMessage(msg string) (subject, body string) {
+	msg = strings.TrimSpace(msg)
+	if idx := strings.Index(msg, "\n"); idx >= 0 {
+		subject = strings.TrimSpace(msg[:idx])
+		body = strings.TrimSpace(msg[idx+1:])
+	} else {
+		subject = msg
+	}
+	return
 }
 
 // WriteRefsText writes git refs in human-readable format.

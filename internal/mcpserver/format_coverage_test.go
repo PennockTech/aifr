@@ -247,7 +247,7 @@ func searchTextSample() string {
 }
 
 func logTextSample() string {
-	return "abc123def456 Author <a@b.c> 2026-01-01\n  initial commit\n"
+	return "commit abc123def456\nAuthor: Author <a@b.c>\nDate:   2026-01-01\n\n    initial commit\n"
 }
 
 func wcTextSample() string {

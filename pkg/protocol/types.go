@@ -141,14 +141,21 @@ type RefsResponse struct {
 	Refs []GitRef `json:"refs"`
 }
 
+// FileChange describes a changed file and its action within a commit.
+type FileChange struct {
+	Path   string `json:"path"`
+	Action string `json:"action"` // "A" (add), "M" (modify), "D" (delete)
+}
+
 // LogEntry describes a single git commit.
 type LogEntry struct {
-	Hash         string   `json:"hash"`
-	Author       string   `json:"author"`
-	AuthorEmail  string   `json:"author_email"`
-	Date         string   `json:"date"`
-	Message      string   `json:"message"`
-	FilesChanged []string `json:"files_changed,omitempty"`
+	Hash         string       `json:"hash"`
+	Author       string       `json:"author"`
+	AuthorEmail  string       `json:"author_email"`
+	Date         string       `json:"date"`
+	Message      string       `json:"message"`
+	FilesChanged []string     `json:"files_changed,omitempty"`
+	Changes      []FileChange `json:"changes,omitempty"`
 }
 
 // LogResponse is the JSON response for a log operation.

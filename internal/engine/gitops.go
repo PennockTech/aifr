@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/utils/merkletrie"
 
 	"go.pennock.tech/aifr/internal/gitprovider"
 	"go.pennock.tech/aifr/pkg/protocol"
@@ -350,6 +351,22 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 								name = ch.From.Name
 							}
 							entry.FilesChanged = append(entry.FilesChanged, name)
+
+							action := "M"
+							if a, aErr := ch.Action(); aErr == nil {
+								switch a {
+								case merkletrie.Insert:
+									action = "A"
+								case merkletrie.Delete:
+									action = "D"
+								case merkletrie.Modify:
+									action = "M"
+								}
+							}
+							entry.Changes = append(entry.Changes, protocol.FileChange{
+								Path:   name,
+								Action: action,
+							})
 						}
 					}
 				}
