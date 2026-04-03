@@ -1033,3 +1033,52 @@ func TestWriteGitConfigText(t *testing.T) {
 		t.Errorf("expected user.email, got %q", got)
 	}
 }
+
+// ── Regression: double line numbering ──
+
+// TestNoDoubleNumbering verifies that WriteReadText with numberLines=true
+// produces exactly one set of line number prefixes. This is a regression test
+// for a bug where applyNumberLines (JSON-mode mutation) ran before the text
+// formatter, which also applied numbering — producing doubled prefixes.
+func TestNoDoubleNumbering(t *testing.T) {
+	resp := &protocol.ReadResponse{
+		Chunk: &protocol.ChunkInfo{
+			StartLine: 10,
+			EndLine:   12,
+			Data:      "alpha\nbeta\ngamma\n",
+			Encoding:  "utf-8",
+		},
+	}
+
+	// Simulate the bug: apply NumberLines to the data (as applyNumberLines did),
+	// then pass the mutated response to WriteReadText with numbering enabled.
+	mutated := &protocol.ReadResponse{
+		Chunk: &protocol.ChunkInfo{
+			StartLine: resp.Chunk.StartLine,
+			EndLine:   resp.Chunk.EndLine,
+			Data:      NumberLines(resp.Chunk.Data, resp.Chunk.StartLine),
+			Encoding:  "utf-8",
+		},
+	}
+	var buggy strings.Builder
+	WriteReadText(&buggy, mutated, true)
+
+	// Correct: apply WriteReadText with numbering on the original data.
+	var correct strings.Builder
+	WriteReadText(&correct, resp, true)
+
+	want := "    10\talpha\n    11\tbeta\n    12\tgamma\n"
+	if correct.String() != want {
+		t.Errorf("correct output = %q, want %q", correct.String(), want)
+	}
+
+	// The buggy path must NOT match the correct output (proves double numbering).
+	if buggy.String() == correct.String() {
+		t.Fatalf("expected double-numbered output to differ, but both are %q", correct.String())
+	}
+
+	// Verify the buggy output contains the tell-tale double prefix.
+	if !strings.Contains(buggy.String(), "    10\t    10\t") {
+		t.Errorf("expected double prefix in buggy output, got %q", buggy.String())
+	}
+}
