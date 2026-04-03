@@ -119,6 +119,32 @@ def get_changed_files(base_sha, head_sha):
             return None
 
 
+def apply_force_overrides(categories):
+    """Apply workflow_dispatch force overrides (additive only).
+
+    FORCE_ALL=true enables every category.
+    FORCE_<CATEGORY>=true enables that specific category.
+    These can never disable a check that change detection enabled.
+    """
+    if os.environ.get("FORCE_ALL", "").lower() == "true":
+        print("Force override: all checks enabled", file=sys.stderr)
+        for k in categories:
+            categories[k] = True
+        return
+
+    force_map = {
+        "FORCE_GO": "go",
+        "FORCE_GORELEASER": "goreleaser",
+        "FORCE_MARKDOWN": "markdown",
+        "FORCE_WORKFLOWS": "workflows",
+    }
+    for env_var, category in force_map.items():
+        if os.environ.get(env_var, "").lower() == "true":
+            if not categories[category]:
+                print(f"Force override: {category} enabled", file=sys.stderr)
+            categories[category] = True
+
+
 def write_outputs(categories):
     """Write category flags to GITHUB_OUTPUT."""
     output_file = os.environ.get("GITHUB_OUTPUT")
@@ -163,31 +189,27 @@ def main():
         else:
             print("No green ancestor found", file=sys.stderr)
 
-    # workflow_dispatch or fallback: no base, run everything
+    # Determine categories from change detection
     if not base_sha:
         print("No base SHA available -- running all checks", file=sys.stderr)
         categories = {k: True for k in ("go", "goreleaser", "markdown", "workflows")}
-        write_outputs(categories)
-        return
+    else:
+        changed_files = get_changed_files(base_sha, head_sha)
+        if changed_files is None:
+            print("::warning::git diff failed -- running all checks", file=sys.stderr)
+            categories = {k: True for k in ("go", "goreleaser", "markdown", "workflows")}
+        elif not changed_files:
+            print("No files changed", file=sys.stderr)
+            categories = {k: False for k in ("go", "goreleaser", "markdown", "workflows")}
+        else:
+            print(f"Changed files ({len(changed_files)}):", file=sys.stderr)
+            for f in changed_files:
+                print(f"  {f}", file=sys.stderr)
+            categories = categorize_files(changed_files)
 
-    changed_files = get_changed_files(base_sha, head_sha)
-    if changed_files is None:
-        print("::warning::git diff failed -- running all checks", file=sys.stderr)
-        categories = {k: True for k in ("go", "goreleaser", "markdown", "workflows")}
-        write_outputs(categories)
-        return
+    # Apply workflow_dispatch force overrides (additive only)
+    apply_force_overrides(categories)
 
-    if not changed_files:
-        print("No files changed -- skipping all checks", file=sys.stderr)
-        categories = {k: False for k in ("go", "goreleaser", "markdown", "workflows")}
-        write_outputs(categories)
-        return
-
-    print(f"Changed files ({len(changed_files)}):", file=sys.stderr)
-    for f in changed_files:
-        print(f"  {f}", file=sys.stderr)
-
-    categories = categorize_files(changed_files)
     write_outputs(categories)
 
 

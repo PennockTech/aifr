@@ -29,7 +29,28 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:  # let someone trigger the CI on their branch without a PR
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Run all checks (ignores change detection)"
+        type: boolean
+        default: false
+      go:
+        description: "Also run Go checks"
+        type: boolean
+        default: false
+      goreleaser:
+        description: "Also run GoReleaser checks"
+        type: boolean
+        default: false
+      markdown:
+        description: "Also run Markdown checks"
+        type: boolean
+        default: false
+      workflows:
+        description: "Also run workflow audit"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -64,6 +85,12 @@ jobs:
         run: python3 .github/scripts/detect-changes.py
         env:
           GH_TOKEN: ${{ github.token }}
+          # workflow_dispatch overrides: additive only, cannot remove checks.
+          FORCE_ALL: ${{ inputs.all }}
+          FORCE_GO: ${{ inputs.go }}
+          FORCE_GORELEASER: ${{ inputs.goreleaser }}
+          FORCE_MARKDOWN: ${{ inputs.markdown }}
+          FORCE_WORKFLOWS: ${{ inputs.workflows }}
 
   go-checks:
     name: Go
