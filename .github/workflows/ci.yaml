@@ -181,7 +181,8 @@ jobs:
     name: Workflows
     needs: changes
     if: needs.changes.outputs.workflows == 'true'
-    runs-on: ubuntu-slim
+    # zizmor-action uses Docker, thus ubuntu-latest ipv ubuntu-slim
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
