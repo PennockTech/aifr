@@ -171,6 +171,7 @@ type LogResponse struct {
 	Ref          string     `json:"ref,omitempty"`
 	Entries      []LogEntry `json:"entries"`
 	Total        int        `json:"total"`
+	Skipped      int        `json:"skipped,omitempty"`
 	Continuation string     `json:"continuation,omitempty"`
 	Complete     bool       `json:"complete"`
 }

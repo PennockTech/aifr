@@ -244,7 +244,8 @@ func WriteLogText(w io.Writer, resp *protocol.LogResponse) {
 	}
 
 	if !resp.Complete && resp.Continuation != "" {
-		fmt.Fprintf(w, "\n... %d commits shown, more available (use --skip %d or continuation token)\n", resp.Total, resp.Total)
+		nextSkip := resp.Skipped + resp.Total
+		fmt.Fprintf(w, "\n... %d commits shown, more available (use --skip %d or continuation token)\n", resp.Total, nextSkip)
 	}
 }
 
@@ -271,7 +272,8 @@ func WriteLogOneline(w io.Writer, resp *protocol.LogResponse) {
 		fmt.Fprintf(w, "%s %s\n", hash, subject)
 	}
 	if !resp.Complete && resp.Continuation != "" {
-		fmt.Fprintf(w, "... %d commits shown, more available (use --skip %d or continuation token)\n", resp.Total, resp.Total)
+		nextSkip := resp.Skipped + resp.Total
+		fmt.Fprintf(w, "... %d commits shown, more available (use --skip %d or continuation token)\n", resp.Total, nextSkip)
 	}
 }
 

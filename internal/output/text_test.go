@@ -869,6 +869,27 @@ func TestWriteLogText(t *testing.T) {
 			t.Errorf("expected --skip hint in continuation message, got %q", got)
 		}
 	})
+
+	t.Run("skip hint is cumulative", func(t *testing.T) {
+		resp := &protocol.LogResponse{
+			Entries: []protocol.LogEntry{
+				{
+					Hash:    "abc123def456abc123def456abc123def456abcdef",
+					Message: "third page",
+				},
+			},
+			Total:        1,
+			Skipped:      40,
+			Complete:     false,
+			Continuation: "tok456",
+		}
+		var buf strings.Builder
+		WriteLogText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "--skip 41") {
+			t.Errorf("expected cumulative --skip 41 hint, got %q", got)
+		}
+	})
 }
 
 // ── WriteLogText: CR in commit message ──

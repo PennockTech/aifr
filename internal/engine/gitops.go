@@ -337,8 +337,9 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 	}
 
 	resp := &protocol.LogResponse{
-		Repo: repoName,
-		Ref:  ref,
+		Repo:    repoName,
+		Ref:     ref,
+		Skipped: params.Skip,
 	}
 
 	hitLimit := false
