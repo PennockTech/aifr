@@ -28,7 +28,8 @@ var (
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(protocol.ExitError)
+		fmt.Fprintf(os.Stderr, "aifr: %s\n", err)
+		os.Exit(protocol.ExitUsage)
 	}
 }
 
