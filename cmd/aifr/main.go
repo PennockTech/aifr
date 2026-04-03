@@ -125,6 +125,32 @@ func writeOutput(v any) {
 		output.WriteFindText(w, resp)
 	case *protocol.DiffResponse:
 		output.WriteDiffText(w, resp)
+	case *protocol.LogResponse:
+		output.WriteLogText(w, resp)
+	case *protocol.RefsResponse:
+		output.WriteRefsText(w, resp)
+	case *protocol.WcResponse:
+		output.WriteWcText(w, resp)
+	case *protocol.PathfindResponse:
+		output.WritePathfindText(w, resp)
+	case *protocol.HexdumpResponse:
+		output.WriteHexdumpText(w, resp)
+	case *protocol.ChecksumResponse:
+		output.WriteChecksumText(w, resp)
+	case *protocol.RevParseResponse:
+		output.WriteRevParseText(w, resp)
+	case *protocol.ReflogResponse:
+		output.WriteReflogText(w, resp)
+	case *protocol.SysinfoResponse:
+		output.WriteSysinfoText(w, resp)
+	case *protocol.GetentResponse:
+		output.WriteGetentText(w, resp)
+	case *protocol.GitConfigResponse:
+		output.WriteGitConfigText(w, resp)
+	case *protocol.GitConfigStructuredResponse:
+		output.WriteGitConfigStructuredText(w, resp)
+	case *protocol.CatResponse:
+		output.WriteCatText(w, resp, "plain", flagNumberLines)
 	case *protocol.ErrorResponse:
 		output.WriteErrorText(w, resp.Error)
 	default:

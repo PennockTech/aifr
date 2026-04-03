@@ -722,3 +722,314 @@ func TestNumberContent(t *testing.T) {
 		}
 	})
 }
+
+// ── WriteLogText ──
+
+func TestWriteLogText(t *testing.T) {
+	resp := &protocol.LogResponse{
+		Entries: []protocol.LogEntry{
+			{
+				Hash:         "abc123def456abc123def456abc123def456abcdef",
+				Author:       "Alice",
+				AuthorEmail:  "alice@example.com",
+				Date:         "2026-01-01T00:00:00Z",
+				Message:      "initial commit",
+				FilesChanged: []string{"README.md"},
+			},
+		},
+	}
+	var buf strings.Builder
+	WriteLogText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "abc123def456") {
+		t.Errorf("expected hash prefix, got %q", got)
+	}
+	if !strings.Contains(got, "Alice") {
+		t.Errorf("expected author, got %q", got)
+	}
+	if !strings.Contains(got, "initial commit") {
+		t.Errorf("expected message, got %q", got)
+	}
+	if !strings.Contains(got, "M README.md") {
+		t.Errorf("expected changed file, got %q", got)
+	}
+}
+
+// ── WriteRefsText ──
+
+func TestWriteRefsText(t *testing.T) {
+	resp := &protocol.RefsResponse{
+		Refs: []protocol.GitRef{
+			{Name: "main", Type: "branch", Hash: "abc123def456abc123def456abc123def456abcdef"},
+			{Name: "main", Type: "remote", Hash: "abc123def456abc123def456abc123def456abcdef", Remote: "origin"},
+		},
+	}
+	var buf strings.Builder
+	WriteRefsText(&buf, resp)
+	got := buf.String()
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %q", len(lines), got)
+	}
+	if !strings.Contains(lines[0], "branch") || !strings.Contains(lines[0], "main") {
+		t.Errorf("expected branch line, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "origin/main") {
+		t.Errorf("expected remote/name, got %q", lines[1])
+	}
+}
+
+// ── WriteWcText ──
+
+func intPtr(v int) *int       { return &v }
+func int64Ptr(v int64) *int64 { return &v }
+
+func TestWriteWcText(t *testing.T) {
+	t.Run("single field bare number", func(t *testing.T) {
+		resp := &protocol.WcResponse{
+			Entries: []protocol.WcEntry{
+				{Path: "/tmp/a.go", Lines: intPtr(42)},
+			},
+			Total:     protocol.WcEntry{Lines: intPtr(42)},
+			FileCount: 1,
+		}
+		var buf strings.Builder
+		WriteWcText(&buf, resp)
+		got := buf.String()
+		if got != "42 /tmp/a.go\n" {
+			t.Errorf("single field single file = %q, want %q", got, "42 /tmp/a.go\n")
+		}
+	})
+
+	t.Run("single field total only", func(t *testing.T) {
+		resp := &protocol.WcResponse{
+			Entries:   nil, // total_only mode
+			Total:     protocol.WcEntry{Lines: intPtr(100)},
+			FileCount: 3,
+		}
+		var buf strings.Builder
+		WriteWcText(&buf, resp)
+		got := buf.String()
+		if got != "100\n" {
+			t.Errorf("single field total only = %q, want %q", got, "100\n")
+		}
+	})
+
+	t.Run("multiple fields key=value", func(t *testing.T) {
+		resp := &protocol.WcResponse{
+			Entries: []protocol.WcEntry{
+				{Path: "/tmp/a.go", Lines: intPtr(10), Words: intPtr(50), Bytes: int64Ptr(200)},
+			},
+			Total:     protocol.WcEntry{Lines: intPtr(10), Words: intPtr(50), Bytes: int64Ptr(200)},
+			FileCount: 1,
+		}
+		var buf strings.Builder
+		WriteWcText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "lines=10") {
+			t.Errorf("expected lines=10, got %q", got)
+		}
+		if !strings.Contains(got, "words=50") {
+			t.Errorf("expected words=50, got %q", got)
+		}
+		if !strings.Contains(got, "bytes=200") {
+			t.Errorf("expected bytes=200, got %q", got)
+		}
+	})
+
+	t.Run("multiple files shows total", func(t *testing.T) {
+		resp := &protocol.WcResponse{
+			Entries: []protocol.WcEntry{
+				{Path: "/a", Lines: intPtr(5)},
+				{Path: "/b", Lines: intPtr(10)},
+			},
+			Total:     protocol.WcEntry{Lines: intPtr(15)},
+			FileCount: 2,
+		}
+		var buf strings.Builder
+		WriteWcText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "15 total") {
+			t.Errorf("expected total line, got %q", got)
+		}
+	})
+
+	t.Run("error entry", func(t *testing.T) {
+		resp := &protocol.WcResponse{
+			Entries: []protocol.WcEntry{
+				{Path: "/bad", Error: "ACCESS_DENIED"},
+			},
+			Total:     protocol.WcEntry{Lines: intPtr(0)},
+			FileCount: 1,
+		}
+		var buf strings.Builder
+		WriteWcText(&buf, resp)
+		got := buf.String()
+		if !strings.Contains(got, "error") {
+			t.Errorf("expected error, got %q", got)
+		}
+	})
+}
+
+// ── WritePathfindText ──
+
+func TestWritePathfindText(t *testing.T) {
+	resp := &protocol.PathfindResponse{
+		Entries: []protocol.PathfindEntry{
+			{Path: "/usr/bin/git", Masked: false},
+			{Path: "/usr/local/bin/git", Masked: true, MaskedBy: "/usr/bin/git"},
+		},
+	}
+	var buf strings.Builder
+	WritePathfindText(&buf, resp)
+	got := buf.String()
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+	if strings.Contains(lines[0], "masked") {
+		t.Errorf("first entry should not be masked, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "masked by /usr/bin/git") {
+		t.Errorf("second entry should be masked, got %q", lines[1])
+	}
+}
+
+// ── WriteHexdumpText ──
+
+func TestWriteHexdumpText(t *testing.T) {
+	resp := &protocol.HexdumpResponse{
+		Lines: []protocol.HexdumpLine{
+			{Offset: 0, Hex: "48 65 6c 6c 6f", ASCII: "Hello"},
+		},
+	}
+	var buf strings.Builder
+	WriteHexdumpText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "00000000") {
+		t.Errorf("expected offset, got %q", got)
+	}
+	if !strings.Contains(got, "Hello") {
+		t.Errorf("expected ASCII, got %q", got)
+	}
+}
+
+// ── WriteChecksumText ──
+
+func TestWriteChecksumText(t *testing.T) {
+	resp := &protocol.ChecksumResponse{
+		Entries: []protocol.ChecksumEntry{
+			{Path: "/tmp/a.go", Checksum: "abc123"},
+			{Path: "/tmp/bad", Error: "ACCESS_DENIED"},
+		},
+	}
+	var buf strings.Builder
+	WriteChecksumText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "abc123  /tmp/a.go") {
+		t.Errorf("expected checksum line, got %q", got)
+	}
+	if !strings.Contains(got, "error") {
+		t.Errorf("expected error line, got %q", got)
+	}
+}
+
+// ── WriteRevParseText ──
+
+func TestWriteRevParseText(t *testing.T) {
+	resp := &protocol.RevParseResponse{
+		Hash:        "abc123def456abc123def456abc123def456abcdef",
+		AuthorName:  "Alice",
+		AuthorEmail: "alice@example.com",
+		Date:        "2026-01-01",
+		Subject:     "fix: something",
+	}
+	var buf strings.Builder
+	WriteRevParseText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "abc123") {
+		t.Errorf("expected hash, got %q", got)
+	}
+	if !strings.Contains(got, "fix: something") {
+		t.Errorf("expected subject, got %q", got)
+	}
+}
+
+// ── WriteReflogText ──
+
+func TestWriteReflogText(t *testing.T) {
+	resp := &protocol.ReflogResponse{
+		Entries: []protocol.ReflogEntry{
+			{NewHash: "abc123def456abc123def456abc123def456abcdef", Author: "Alice", Date: "2026-01-01", Action: "commit: test"},
+		},
+	}
+	var buf strings.Builder
+	WriteReflogText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "abc123def456") {
+		t.Errorf("expected hash prefix, got %q", got)
+	}
+	if !strings.Contains(got, "commit: test") {
+		t.Errorf("expected action, got %q", got)
+	}
+}
+
+// ── WriteSysinfoText ──
+
+func TestWriteSysinfoText(t *testing.T) {
+	resp := &protocol.SysinfoResponse{
+		OS:       &protocol.SysinfoOS{Kernel: "Linux", Release: "6.1.0", Arch: "amd64"},
+		Date:     &protocol.SysinfoDate{UTC: "2026-01-01T00:00:00Z", Timezone: "UTC"},
+		Hostname: "myhost",
+	}
+	var buf strings.Builder
+	WriteSysinfoText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "Linux") {
+		t.Errorf("expected Linux, got %q", got)
+	}
+	if !strings.Contains(got, "myhost") {
+		t.Errorf("expected hostname, got %q", got)
+	}
+}
+
+// ── WriteGetentText ──
+
+func TestWriteGetentText(t *testing.T) {
+	resp := &protocol.GetentResponse{
+		Database: "passwd",
+		Fields:   []string{"name", "uid", "shell"},
+		Entries: []protocol.GetentEntry{
+			{Fields: map[string]string{"name": "root", "uid": "0", "shell": "/bin/bash"}},
+		},
+	}
+	var buf strings.Builder
+	WriteGetentText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "name=root") {
+		t.Errorf("expected name=root, got %q", got)
+	}
+	if !strings.Contains(got, "uid=0") {
+		t.Errorf("expected uid=0, got %q", got)
+	}
+}
+
+// ── WriteGitConfigText ──
+
+func TestWriteGitConfigText(t *testing.T) {
+	resp := &protocol.GitConfigResponse{
+		Entries: []protocol.GitConfigEntry{
+			{Key: "user.name", Value: "Alice"},
+			{Key: "user.email", Value: "alice@example.com"},
+		},
+	}
+	var buf strings.Builder
+	WriteGitConfigText(&buf, resp)
+	got := buf.String()
+	if !strings.Contains(got, "user.name=Alice") {
+		t.Errorf("expected user.name=Alice, got %q", got)
+	}
+	if !strings.Contains(got, "user.email=alice@example.com") {
+		t.Errorf("expected user.email, got %q", got)
+	}
+}

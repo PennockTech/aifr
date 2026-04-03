@@ -169,7 +169,7 @@ func toolFind() *mcp.Tool {
 func toolRefs() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "aifr_refs",
-		Description: "List git branches, tags, and remote refs for a repository.",
+		Description: "List git branches, tags, and remote refs for a repository. Use format=\"text\" for compact output.",
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -177,6 +177,7 @@ func toolRefs() *mcp.Tool {
 				"branches": map[string]any{"type": "boolean", "description": "Show branches"},
 				"tags":     map[string]any{"type": "boolean", "description": "Show tags"},
 				"remotes":  map[string]any{"type": "boolean", "description": "Show remote refs"},
+				"format":   map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 		}),
 	}
@@ -185,7 +186,7 @@ func toolRefs() *mcp.Tool {
 func toolLog() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "aifr_log",
-		Description: "Git commit log with structured entries (hash, author, date, message, files changed).",
+		Description: "Git commit log with structured entries (hash, author, date, message, files changed). Use format=\"text\" for compact output.",
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -193,6 +194,7 @@ func toolLog() *mcp.Tool {
 				"ref":          map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
 				"max_count":    map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous log"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 		}),
 	}
@@ -496,6 +498,7 @@ func (s *Server) handleRefs(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 		Branches bool   `json:"branches"`
 		Tags     bool   `json:"tags"`
 		Remotes  bool   `json:"remotes"`
+		Format   string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -503,6 +506,13 @@ func (s *Server) handleRefs(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 	resp, err := s.engine.Refs(args.Repo, args.Branches, args.Tags, args.Remotes)
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteRefsText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -513,6 +523,7 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		Ref          string `json:"ref"`
 		MaxCount     int    `json:"max_count"`
 		Continuation string `json:"continuation"`
+		Format       string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -533,6 +544,13 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 	resp, err := s.engine.Log(args.Repo, args.Ref, params)
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteLogText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -682,6 +700,7 @@ earlier entry in the search list.`,
 			"properties": map[string]any{
 				"command":     map[string]any{"type": "string", "description": "Command name or glob pattern (e.g., 'git', 'git-*', 'python3.[0-9]')"},
 				"search_list": map[string]any{"type": "string", "description": "Search list spec (default: envvar:PATH)"},
+				"format":      map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"command"},
 		}),
@@ -692,6 +711,7 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 	var args struct {
 		Command    string `json:"command"`
 		SearchList string `json:"search_list"`
+		Format     string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -701,6 +721,13 @@ func (s *Server) handlePathfind(_ context.Context, req *mcp.CallToolRequest) (*m
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WritePathfindText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -718,6 +745,7 @@ func toolReflog() *mcp.Tool {
 				"repo":         map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
 				"max_count":    map[string]any{"type": "integer", "description": "Maximum entries to return (default: 50)"},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous reflog"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 		}),
 	}
@@ -729,6 +757,7 @@ func (s *Server) handleReflog(_ context.Context, req *mcp.CallToolRequest) (*mcp
 		Repo         string `json:"repo"`
 		MaxCount     int    `json:"max_count"`
 		Continuation string `json:"continuation"`
+		Format       string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -750,6 +779,13 @@ func (s *Server) handleReflog(_ context.Context, req *mcp.CallToolRequest) (*mcp
 	if err != nil {
 		return toolError(err.Error())
 	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteReflogText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	}
 	return toolResult(resp)
 }
 
@@ -765,6 +801,7 @@ func toolStashList() *mcp.Tool {
 				"repo":         map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
 				"max_count":    map[string]any{"type": "integer", "description": "Maximum stash entries to return (default: 50)"},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous stash list"},
+				"format":       map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 		}),
 	}
@@ -775,6 +812,7 @@ func (s *Server) handleStashList(_ context.Context, req *mcp.CallToolRequest) (*
 		Repo         string `json:"repo"`
 		MaxCount     int    `json:"max_count"`
 		Continuation string `json:"continuation"`
+		Format       string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -796,6 +834,13 @@ func (s *Server) handleStashList(_ context.Context, req *mcp.CallToolRequest) (*
 	if err != nil {
 		return toolError(err.Error())
 	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteReflogText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
+	}
 	return toolResult(resp)
 }
 
@@ -813,6 +858,7 @@ Passwd fields: name, uid, gid, gecos, home, shell. Group fields: name, gid, memb
 				"key":      map[string]any{"type": "string", "description": "Optional: look up by name or numeric ID"},
 				"fields":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Fields to return (default: all)"},
 				"protocol": map[string]any{"type": "string", "description": "For services database: filter by protocol (tcp, udp)"},
+				"format":   map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"database"},
 		}),
@@ -825,6 +871,7 @@ func (s *Server) handleGetent(_ context.Context, req *mcp.CallToolRequest) (*mcp
 		Key      string   `json:"key"`
 		Fields   []string `json:"fields"`
 		Protocol string   `json:"protocol"`
+		Format   string   `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -837,6 +884,13 @@ func (s *Server) handleGetent(_ context.Context, req *mcp.CallToolRequest) (*mcp
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteGetentText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -855,6 +909,7 @@ func toolSysinfo() *mcp.Tool {
 					"items":       map[string]any{"type": "string", "enum": []string{"os", "date", "hostname", "uptime", "network", "routing"}},
 					"description": "Sections to include (default: all)",
 				},
+				"format": map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 		}),
 	}
@@ -863,6 +918,7 @@ func toolSysinfo() *mcp.Tool {
 func (s *Server) handleSysinfo(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
 		Sections []string `json:"sections"`
+		Format   string   `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -872,6 +928,13 @@ func (s *Server) handleSysinfo(_ context.Context, req *mcp.CallToolRequest) (*mc
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteSysinfoText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -888,6 +951,7 @@ func toolHexdump() *mcp.Tool {
 				"path":   map[string]any{"type": "string", "description": "File path (filesystem or git ref:path)"},
 				"offset": map[string]any{"type": "integer", "description": "Starting byte offset (default 0)"},
 				"length": map[string]any{"type": "integer", "description": "Bytes to dump (default 256, max 65536)"},
+				"format": map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"path"},
 		}),
@@ -899,6 +963,7 @@ func (s *Server) handleHexdump(_ context.Context, req *mcp.CallToolRequest) (*mc
 		Path   string `json:"path"`
 		Offset int64  `json:"offset"`
 		Length int64  `json:"length"`
+		Format string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -909,6 +974,13 @@ func (s *Server) handleHexdump(_ context.Context, req *mcp.CallToolRequest) (*mc
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteHexdumpText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -922,8 +994,9 @@ func toolRevParse() *mcp.Tool {
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"ref":  map[string]any{"type": "string", "description": "Git ref to resolve (branch, tag, commit hash, HEAD~N). Defaults to HEAD."},
-				"repo": map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect from cwd)"},
+				"ref":    map[string]any{"type": "string", "description": "Git ref to resolve (branch, tag, commit hash, HEAD~N). Defaults to HEAD."},
+				"repo":   map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect from cwd)"},
+				"format": map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"ref"},
 		}),
@@ -932,8 +1005,9 @@ func toolRevParse() *mcp.Tool {
 
 func (s *Server) handleRevParse(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Ref  string `json:"ref"`
-		Repo string `json:"repo"`
+		Ref    string `json:"ref"`
+		Repo   string `json:"repo"`
+		Format string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -941,6 +1015,13 @@ func (s *Server) handleRevParse(_ context.Context, req *mcp.CallToolRequest) (*m
 	resp, err := s.engine.RevParse(args.Repo, args.Ref)
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteRevParseText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -957,6 +1038,7 @@ func toolChecksum() *mcp.Tool {
 				"paths":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "File paths to checksum (filesystem or git ref:path)"},
 				"algorithm": map[string]any{"type": "string", "description": "Hash algorithm: sha256, sha1, sha512, sha3-256, sha3-512, md5 (default: sha256)"},
 				"encoding":  map[string]any{"type": "string", "description": "Output encoding: hex, base64, base64url (default: hex)"},
+				"format":    map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"paths"},
 		}),
@@ -968,6 +1050,7 @@ func (s *Server) handleChecksum(_ context.Context, req *mcp.CallToolRequest) (*m
 		Paths     []string `json:"paths"`
 		Algorithm string   `json:"algorithm"`
 		Encoding  string   `json:"encoding"`
+		Format    string   `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -981,6 +1064,13 @@ func (s *Server) handleChecksum(_ context.Context, req *mcp.CallToolRequest) (*m
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteChecksumText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -1000,6 +1090,7 @@ func toolWc() *mcp.Tool {
 				"bytes":      map[string]any{"type": "boolean", "description": "Count bytes"},
 				"chars":      map[string]any{"type": "boolean", "description": "Count characters (runes)"},
 				"total_only": map[string]any{"type": "boolean", "description": "Return only the combined total, suppress per-file entries"},
+				"format":     map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"paths"},
 		}),
@@ -1014,6 +1105,7 @@ func (s *Server) handleWc(_ context.Context, req *mcp.CallToolRequest) (*mcp.Cal
 		Bytes     bool     `json:"bytes"`
 		Chars     bool     `json:"chars"`
 		TotalOnly bool     `json:"total_only"`
+		Format    string   `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -1030,6 +1122,13 @@ func (s *Server) handleWc(_ context.Context, req *mcp.CallToolRequest) (*mcp.Cal
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteWcText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -1054,6 +1153,7 @@ Credential-related keys are always redacted.`,
 				"type":       map[string]any{"type": "string", "description": "Type coercion: bool, int, path"},
 				"structured": map[string]any{"type": "string", "description": "Structured query: identity, remotes, branches"},
 				"repo":       map[string]any{"type": "string", "description": "Named repo or filesystem path (default: auto-detect)"},
+				"format":     map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 		}),
 	}
@@ -1069,6 +1169,7 @@ func (s *Server) handleGitConfig(_ context.Context, req *mcp.CallToolRequest) (*
 		Type       string `json:"type"`
 		Structured string `json:"structured"`
 		Repo       string `json:"repo"`
+		Format     string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -1085,6 +1186,13 @@ func (s *Server) handleGitConfig(_ context.Context, req *mcp.CallToolRequest) (*
 	})
 	if err != nil {
 		return toolError(err.Error())
+	}
+	if args.Format == "text" {
+		var buf strings.Builder
+		output.WriteGitConfigText(&buf, resp)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
+		}, nil
 	}
 	return toolResult(resp)
 }
@@ -1107,6 +1215,7 @@ Actions:
 					"enum":        []string{"version", "config", "reload"},
 					"description": "Action to perform",
 				},
+				"format": map[string]any{"type": "string", "enum": []string{"json", "text"}, "description": "Output format (default: json)", "default": "json"},
 			},
 			"required": []string{"action"},
 		}),
@@ -1116,6 +1225,7 @@ Actions:
 func (s *Server) handleSelf(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
 		Action string `json:"action"`
+		Format string `json:"format"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
@@ -1123,6 +1233,13 @@ func (s *Server) handleSelf(_ context.Context, req *mcp.CallToolRequest) (*mcp.C
 
 	switch args.Action {
 	case "version":
+		if args.Format == "text" {
+			text := fmt.Sprintf("aifr %s (commit %s, built %s)\n",
+				version.Version, version.Commit, version.BuildDate)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: text}},
+			}, nil
+		}
 		return toolResult(map[string]string{
 			"version":    version.Version,
 			"commit":     version.Commit,
