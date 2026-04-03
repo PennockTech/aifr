@@ -121,7 +121,7 @@ func writeJSON(v any) {
 
 // writeOutput writes the response in the selected format.
 func writeOutput(v any) {
-	if flagNumberLines {
+	if flagNumberLines && flagFormat != "text" {
 		applyNumberLines(v)
 	}
 	if flagFormat != "text" {
