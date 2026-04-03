@@ -318,6 +318,60 @@ func TestLogCompleteField(t *testing.T) {
 	}
 }
 
+func TestLogSkip(t *testing.T) {
+	dir := t.TempDir()
+	initTestGitRepo(t, dir, 5)
+	eng := newTestEngine(t, dir)
+
+	// Get all commits to know the expected order.
+	all, err := eng.Log(dir, "HEAD", LogParams{MaxCount: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Entries) != 5 {
+		t.Fatalf("expected 5 commits, got %d", len(all.Entries))
+	}
+
+	// Skip 2, get 2 — should start at the 3rd commit.
+	resp, err := eng.Log(dir, "HEAD", LogParams{MaxCount: 2, Skip: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(resp.Entries))
+	}
+	if resp.Entries[0].Hash != all.Entries[2].Hash {
+		t.Errorf("first entry after skip=2: got %s, want %s",
+			resp.Entries[0].Hash[:12], all.Entries[2].Hash[:12])
+	}
+	if resp.Entries[1].Hash != all.Entries[3].Hash {
+		t.Errorf("second entry after skip=2: got %s, want %s",
+			resp.Entries[1].Hash[:12], all.Entries[3].Hash[:12])
+	}
+
+	// Skip past all commits — should return empty.
+	resp2, err := eng.Log(dir, "HEAD", LogParams{MaxCount: 10, Skip: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp2.Entries) != 0 {
+		t.Errorf("expected 0 entries after skipping past all, got %d", len(resp2.Entries))
+	}
+	if !resp2.Complete {
+		t.Error("expected Complete=true when no entries returned")
+	}
+
+	// Skip 0 — same as no skip.
+	resp3, err := eng.Log(dir, "HEAD", LogParams{MaxCount: 2, Skip: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp3.Entries[0].Hash != all.Entries[0].Hash {
+		t.Errorf("skip=0 first entry: got %s, want %s",
+			resp3.Entries[0].Hash[:12], all.Entries[0].Hash[:12])
+	}
+}
+
 // initTestGitRepo creates a bare-minimum git repo with N commits using go-git.
 func initTestGitRepo(t *testing.T, dir string, numCommits int) {
 	t.Helper()

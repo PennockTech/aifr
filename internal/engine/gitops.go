@@ -272,6 +272,7 @@ func (e *Engine) Refs(repoName string, branches, tags, remotes bool) (*protocol.
 // LogParams controls git log queries.
 type LogParams struct {
 	MaxCount  int    // 0 = default (20)
+	Skip      int    // skip this many commits before collecting entries
 	StartHash string // start from this commit's parent (for pagination)
 	Verbose   bool   // include tree hash, parent hashes, committer details
 }
@@ -319,6 +320,19 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 			}
 		} else {
 			current = nil
+		}
+	}
+
+	// Skip commits if requested.
+	for skipped := 0; skipped < params.Skip && current != nil; skipped++ {
+		if current.NumParents() == 0 {
+			current = nil
+			break
+		}
+		current, err = current.Parent(0)
+		if err != nil {
+			current = nil
+			break
 		}
 	}
 

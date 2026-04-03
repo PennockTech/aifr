@@ -865,6 +865,9 @@ func TestWriteLogText(t *testing.T) {
 		if !strings.Contains(got, "1 commits shown") {
 			t.Errorf("expected continuation message, got %q", got)
 		}
+		if !strings.Contains(got, "--skip 1") {
+			t.Errorf("expected --skip hint in continuation message, got %q", got)
+		}
 	})
 }
 

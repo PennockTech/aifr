@@ -197,6 +197,7 @@ Use verbose=true in json mode for tree_hash, parent_hashes, and committer detail
 				"repo":         map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
 				"ref":          map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
 				"max_count":    map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
+				"skip":         map[string]any{"type": "integer", "description": "Skip this many commits before collecting results", "default": 0},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous log"},
 				"format":       map[string]any{"type": "string", "enum": []string{"json", "text", "oneline"}, "description": "Output format (default: json)", "default": "json"},
 				"divider":      map[string]any{"type": "string", "enum": []string{"plain", "xml"}, "description": "Divider format for text output (default: plain)", "default": "plain"},
@@ -534,6 +535,7 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		Repo         string `json:"repo"`
 		Ref          string `json:"ref"`
 		MaxCount     int    `json:"max_count"`
+		Skip         int    `json:"skip"`
 		Continuation string `json:"continuation"`
 		Format       string `json:"format"`
 		Divider      string `json:"divider"`
@@ -544,7 +546,7 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 	}
 	args.Format = resolveMCPFormat(args.Format)
 
-	params := engine.LogParams{MaxCount: args.MaxCount, Verbose: args.Verbose}
+	params := engine.LogParams{MaxCount: args.MaxCount, Skip: args.Skip, Verbose: args.Verbose}
 	if args.Continuation != "" {
 		tok, err := s.decodeContinuation(args.Continuation, "log")
 		if err != nil {

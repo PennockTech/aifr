@@ -11,6 +11,7 @@ import (
 
 var (
 	logMaxCount int
+	logSkip     int
 	logOneline  bool
 	logDivider  string
 	logVerbose  bool
@@ -68,6 +69,7 @@ details (when they differ from the author) in JSON output.`,
 
 		resp, err := eng.Log(repoName, ref, engine.LogParams{
 			MaxCount: logMaxCount,
+			Skip:     logSkip,
 			Verbose:  logVerbose,
 		})
 		if err != nil {
@@ -81,6 +83,7 @@ details (when they differ from the author) in JSON output.`,
 
 func init() {
 	logCmd.Flags().IntVar(&logMaxCount, "max-count", 20, "maximum commits to show")
+	logCmd.Flags().IntVar(&logSkip, "skip", 0, "skip this many commits before showing results")
 	logCmd.Flags().BoolVar(&logOneline, "oneline", false, "compact one-line-per-commit output")
 	logCmd.Flags().StringVar(&logDivider, "divider", "plain", "divider format for text output: plain, xml")
 	logCmd.Flags().BoolVar(&logVerbose, "verbose", false, "include tree hash, parent hashes, committer details")
