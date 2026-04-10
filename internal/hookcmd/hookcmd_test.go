@@ -73,6 +73,28 @@ func TestCheckCommand_InvalidJSON(t *testing.T) {
 	}
 }
 
+// TestCheckCommand_PipelinePassthrough is an end-to-end wiring test verifying
+// that a command pipeline (containing shell operators) passes through
+// CheckCommand without a suggestion. The full scope of complex pipeline
+// detection is covered in suggest_test.go via AnalyzeCommand tests.
+func TestCheckCommand_PipelinePassthrough(t *testing.T) {
+	input := `{
+		"session_id": "test-session",
+		"tool_name": "Bash",
+		"tool_input": {"command": "git log --oneline | head -n 10"},
+		"hook_event_name": "PreToolUse"
+	}`
+
+	result, err := CheckCommand([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != nil {
+		t.Errorf("expected nil for pipeline command, got result with decision %q",
+			result.HookSpecificOutput.Decision)
+	}
+}
+
 func TestCheckCommand_OutputFormat(t *testing.T) {
 	input := `{
 		"session_id": "s1",
