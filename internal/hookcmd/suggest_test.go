@@ -24,6 +24,7 @@ func TestAnalyzeCommand_NoSuggestion(t *testing.T) {
 		{"head from stdin", "head -n 5"},
 		{"tail -f", "tail -f server.log"},
 		{"tail --follow", "tail --follow server.log"},
+		{"tail -f pipe", "tail -f server.log | head -5"},
 		{"grep from stdin", "grep pattern"},
 		{"wc from stdin", "wc -l"},
 		{"stat no args", "stat"},

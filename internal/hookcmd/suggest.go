@@ -38,107 +38,45 @@ func AnalyzeCommand(command string) *Suggestion {
 		return nil
 	}
 
+	parsed, mod := parseShellCommand(command)
+	if parsed == nil {
+		return nil
+	}
+
 	// Already an aifr invocation — nothing to suggest.
-	if strings.HasPrefix(command, "aifr ") || command == "aifr" {
+	if parsed.Name == "aifr" {
 		return nil
 	}
 
-	// Split pipeline and check for trailing head/tail.
-	stages := splitPipeline(command)
-	var mod PipelineModifier
-	var baseStage string
-
-	switch len(stages) {
-	case 1:
-		baseStage = stages[0]
-	case 2:
-		mod = parsePipeTail(stages[1])
-		if !mod.IsSet() {
-			return nil // unknown pipe target
-		}
-		baseStage = stages[0]
-	default:
-		return nil // 3+ stage pipelines are too complex
-	}
-
-	baseStage = strings.TrimSpace(baseStage)
-
-	// Check for non-pipe shell operators in the base stage.
-	if hasShellOperators(baseStage) {
-		return nil
-	}
-
-	tokens := tokenize(baseStage)
-	if len(tokens) == 0 {
-		return nil
-	}
-
-	// Skip environment variable assignments (VAR=value cmd ...).
-	start := 0
-	for start < len(tokens) && strings.Contains(tokens[start], "=") && !strings.HasPrefix(tokens[start], "-") {
-		start++
-	}
-	if start >= len(tokens) {
-		return nil
-	}
-	tokens = tokens[start:]
-
-	baseCmd := baseName(tokens[0])
-	args := tokens[1:]
-
-	switch baseCmd {
+	switch parsed.Name {
 	case "cat":
-		return suggestCat(args, mod)
+		return suggestCat(parsed.Args, mod)
 	case "head":
-		return suggestHead(args, mod)
+		return suggestHead(parsed.Args, mod)
 	case "tail":
-		return suggestTail(args, mod)
+		return suggestTail(parsed.Args, mod)
 	case "grep", "egrep", "fgrep", "rg":
-		return suggestSearch(baseCmd, args, mod)
+		return suggestSearch(parsed.Name, parsed.Args, mod)
 	case "find":
-		return suggestFind(args, mod)
+		return suggestFind(parsed.Args, mod)
 	case "ls":
-		return suggestList(args, mod)
+		return suggestList(parsed.Args, mod)
 	case "wc":
-		return suggestWc(args, mod)
+		return suggestWc(parsed.Args, mod)
 	case "stat":
-		return suggestStat(args, mod)
+		return suggestStat(parsed.Args, mod)
 	case "diff":
-		return suggestDiff(args, mod)
+		return suggestDiff(parsed.Args, mod)
 	case "sha256sum", "sha1sum", "md5sum", "shasum", "sha384sum", "sha512sum", "b2sum":
-		return suggestChecksum(baseCmd, args, mod)
+		return suggestChecksum(parsed.Name, parsed.Args, mod)
 	case "hexdump", "xxd", "od":
-		return suggestHexdump(baseCmd, args, mod)
+		return suggestHexdump(parsed.Name, parsed.Args, mod)
 	case "sed":
-		return suggestSed(args, mod)
+		return suggestSed(parsed.Args, mod)
 	case "git":
-		return suggestGit(args, mod)
+		return suggestGit(parsed.Args, mod)
 	default:
 		return nil
-	}
-}
-
-// parsePipeTail parses the tail of a pipeline (the part after |) to detect
-// head -n N or tail -n N patterns.
-func parsePipeTail(stage string) PipelineModifier {
-	stage = strings.TrimSpace(stage)
-	tokens := tokenize(stage)
-	if len(tokens) == 0 {
-		return PipelineModifier{}
-	}
-	cmd := baseName(tokens[0])
-	args := tokens[1:]
-
-	switch cmd {
-	case "head":
-		return PipelineModifier{HeadLines: parseHeadTailN(args, 10)}
-	case "tail":
-		if hasFlag(args, "-f", "--follow", "-F") {
-			return PipelineModifier{}
-		}
-		return PipelineModifier{TailLines: parseHeadTailN(args, 10)}
-	default:
-		return PipelineModifier{}
 	}
 }
 

@@ -6,73 +6,126 @@ import (
 	"testing"
 )
 
-func TestTokenize(t *testing.T) {
+func TestParseShellCommand_Simple(t *testing.T) {
 	cases := []struct {
-		input string
-		want  []string
+		input    string
+		wantName string
+		wantArgs []string
 	}{
-		{"cat file.go", []string{"cat", "file.go"}},
-		{"head -n 50 file.go", []string{"head", "-n", "50", "file.go"}},
-		{`grep "hello world" .`, []string{"grep", "hello world", "."}},
-		{`cat 'file with spaces.go'`, []string{"cat", "file with spaces.go"}},
-		{`echo foo\ bar`, []string{"echo", "foo bar"}},
-		{"  head  -n  10  file.go  ", []string{"head", "-n", "10", "file.go"}},
-		{"", nil},
-		{"/usr/bin/cat file.go", []string{"/usr/bin/cat", "file.go"}},
+		{"cat file.go", "cat", []string{"file.go"}},
+		{"head -n 50 file.go", "head", []string{"-n", "50", "file.go"}},
+		{`grep "hello world" .`, "grep", []string{"hello world", "."}},
+		{`cat 'file with spaces.go'`, "cat", []string{"file with spaces.go"}},
+		{"/usr/bin/cat file.go", "cat", []string{"file.go"}},
+		{"ls -la src/", "ls", []string{"-la", "src/"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
-			got := tokenize(tc.input)
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("tokenize(%q) = %v, want %v", tc.input, got, tc.want)
+			parsed, mod := parseShellCommand(tc.input)
+			if parsed == nil {
+				t.Fatal("expected parsed command, got nil")
+			}
+			if parsed.Name != tc.wantName {
+				t.Errorf("Name: got %q, want %q", parsed.Name, tc.wantName)
+			}
+			if !reflect.DeepEqual(parsed.Args, tc.wantArgs) {
+				t.Errorf("Args: got %v, want %v", parsed.Args, tc.wantArgs)
+			}
+			if mod.IsSet() {
+				t.Errorf("expected no modifier, got %+v", mod)
 			}
 		})
 	}
 }
 
-func TestHasShellOperators(t *testing.T) {
+func TestParseShellCommand_EnvVars(t *testing.T) {
+	parsed, _ := parseShellCommand("LANG=C cat file.go")
+	if parsed == nil {
+		t.Fatal("expected parsed command, got nil")
+	}
+	if parsed.Name != "cat" {
+		t.Errorf("Name: got %q, want %q", parsed.Name, "cat")
+	}
+	if !reflect.DeepEqual(parsed.Args, []string{"file.go"}) {
+		t.Errorf("Args: got %v, want %v", parsed.Args, []string{"file.go"})
+	}
+}
+
+func TestParseShellCommand_Redirections(t *testing.T) {
+	// Redirections should not appear in Args (parser handles them separately).
+	parsed, _ := parseShellCommand("cat file.go > out.txt")
+	if parsed == nil {
+		t.Fatal("expected parsed command, got nil")
+	}
+	if parsed.Name != "cat" {
+		t.Errorf("Name: got %q, want %q", parsed.Name, "cat")
+	}
+	if !reflect.DeepEqual(parsed.Args, []string{"file.go"}) {
+		t.Errorf("Args: got %v, want %v (redirections should be excluded)", parsed.Args, []string{"file.go"})
+	}
+}
+
+func TestParseShellCommand_Pipeline(t *testing.T) {
 	cases := []struct {
-		input string
-		want  bool
+		input    string
+		wantName string
+		wantHead int
+		wantTail int
 	}{
-		{"cat file.go", false},
-		{"cat file.go | head", true},
-		{"cd /tmp && ls", true},
-		{"echo hello; echo world", true},
-		{"echo 'hello | world'", false},  // pipe inside quotes
-		{`echo "hello && world"`, false}, // && inside quotes
-		{"cat file.go &", true},          // backgrounding
-		{"echo $(date)", true},           // subshell
-		{"echo `date`", true},            // backtick subshell
-		{"head -n 50 file.go", false},
-		{`grep "a;b" file.go`, false}, // semicolon in quotes
-		{`grep 'a|b' file.go`, false}, // pipe in quotes
+		{"cat file.go | head -n 50", "cat", 50, 0},
+		{"cat file.go | head -10", "cat", 10, 0},
+		{"cat file.go | head", "cat", 10, 0}, // default 10
+		{"cat file.go | tail -n 20", "cat", 0, 20},
+		{"git log --oneline | head -n 10", "git", 10, 0},
+		{"grep TODO . | head -5", "grep", 5, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
-			got := hasShellOperators(tc.input)
-			if got != tc.want {
-				t.Errorf("hasShellOperators(%q) = %v, want %v", tc.input, got, tc.want)
+			parsed, mod := parseShellCommand(tc.input)
+			if parsed == nil {
+				t.Fatal("expected parsed command, got nil")
+			}
+			if parsed.Name != tc.wantName {
+				t.Errorf("Name: got %q, want %q", parsed.Name, tc.wantName)
+			}
+			if mod.HeadLines != tc.wantHead {
+				t.Errorf("HeadLines: got %d, want %d", mod.HeadLines, tc.wantHead)
+			}
+			if mod.TailLines != tc.wantTail {
+				t.Errorf("TailLines: got %d, want %d", mod.TailLines, tc.wantTail)
 			}
 		})
 	}
 }
 
-func TestBaseName(t *testing.T) {
+func TestParseShellCommand_Complex(t *testing.T) {
+	// All of these should return nil (too complex to analyze).
 	cases := []struct {
-		input string
-		want  string
+		name    string
+		command string
 	}{
-		{"cat", "cat"},
-		{"/usr/bin/cat", "cat"},
-		{"/bin/grep", "grep"},
-		{"./local/bin/rg", "rg"},
+		{"empty", ""},
+		{"three-stage pipeline", "cat file | grep pattern | head -5"},
+		{"unknown pipe target", "cat file | sort"},
+		{"double ampersand", "cd /tmp && ls"},
+		{"logical or", "cat file || echo fallback"},
+		{"semicolon", "echo hello; echo world"},
+		{"background", "cat file &"},
+		{"subshell", "(cat file)"},
+		{"pipe in quotes OK", `grep "a|b" file`}, // single command, not nil
 	}
 	for _, tc := range cases {
-		t.Run(tc.input, func(t *testing.T) {
-			got := baseName(tc.input)
-			if got != tc.want {
-				t.Errorf("baseName(%q) = %q, want %q", tc.input, got, tc.want)
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, _ := parseShellCommand(tc.command)
+			switch tc.name {
+			case "pipe in quotes OK":
+				if parsed == nil {
+					t.Error("grep with | in pattern should parse as simple command")
+				}
+			default:
+				if parsed != nil {
+					t.Errorf("expected nil for complex command, got %+v", parsed)
+				}
 			}
 		})
 	}
@@ -100,29 +153,6 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
-func TestSplitPipeline(t *testing.T) {
-	cases := []struct {
-		input string
-		want  []string
-	}{
-		{"cat file.go", []string{"cat file.go"}},
-		{"cat file.go | head -5", []string{"cat file.go ", " head -5"}},
-		{"a | b | c", []string{"a ", " b ", " c"}},
-		{"grep 'a|b' file", []string{"grep 'a|b' file"}}, // | inside quotes
-		{`grep "a|b" file`, []string{`grep "a|b" file`}}, // | inside double quotes
-		{"cmd1 || cmd2", []string{"cmd1 || cmd2"}},       // || is not a pipe
-		{"cat file | head | tail", []string{"cat file ", " head ", " tail"}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.input, func(t *testing.T) {
-			got := splitPipeline(tc.input)
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("splitPipeline(%q) = %v, want %v", tc.input, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestNonFlags(t *testing.T) {
 	cases := []struct {
 		input []string
@@ -130,8 +160,6 @@ func TestNonFlags(t *testing.T) {
 	}{
 		{[]string{"-n", "file.go"}, []string{"file.go"}},
 		{[]string{"-la", "src/"}, []string{"src/"}},
-		{[]string{"file.go", ">", "out.txt"}, []string{"file.go"}},
-		{[]string{"file.go", ">>", "out.txt"}, []string{"file.go"}},
 		{[]string{"-l", "-w", "file.go"}, []string{"file.go"}},
 	}
 	for _, tc := range cases {
