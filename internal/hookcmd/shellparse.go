@@ -7,6 +7,7 @@ package hookcmd
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -22,8 +23,8 @@ type parsedCommand struct {
 // an optional pipeline modifier. Returns nil if the command is too complex
 // to analyze (multiple statements, subshells, control operators, etc.).
 //
-// Two-stage pipelines where the second stage is head or tail are recognized
-// and returned as a modifier on the first stage.
+// Two-stage pipelines where the second stage is head, tail, or sed -n are
+// recognized and returned as a modifier on the first stage.
 func parseShellCommand(command string) (*parsedCommand, PipelineModifier) {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(command), "")
@@ -84,8 +85,8 @@ func parsePipelineCmd(bc *syntax.BinaryCmd) (*parsedCommand, PipelineModifier) {
 	return left, mod
 }
 
-// pipeTailModifier checks if a parsed command is head or tail and extracts
-// the line count as a PipelineModifier.
+// pipeTailModifier checks if a parsed command is head, tail, or sed -n and
+// extracts the line count or range as a PipelineModifier.
 func pipeTailModifier(cmd *parsedCommand) PipelineModifier {
 	switch cmd.Name {
 	case "head":
@@ -95,9 +96,71 @@ func pipeTailModifier(cmd *parsedCommand) PipelineModifier {
 			return PipelineModifier{}
 		}
 		return PipelineModifier{TailLines: parseHeadTailN(cmd.Args, 10)}
+	case "sed":
+		return parseSedModifier(cmd.Args)
 	default:
 		return PipelineModifier{}
 	}
+}
+
+// parseSedModifier parses sed -n 'Np' or 'N,Mp' as a pipeline modifier.
+// When the range starts at line 1, it normalizes to HeadLines for
+// compatibility with commands that support head-style limits.
+func parseSedModifier(args []string) PipelineModifier {
+	if !hasFlag(args, "-n") {
+		return PipelineModifier{}
+	}
+
+	// Find the script argument (first non-flag after -n).
+	var script string
+	sawN := false
+	for _, a := range args {
+		if a == "-n" {
+			sawN = true
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if sawN {
+			script = a
+			break
+		}
+	}
+	if script == "" {
+		return PipelineModifier{}
+	}
+
+	script = strings.TrimSuffix(script, "p")
+	if script == "" {
+		return PipelineModifier{}
+	}
+
+	parts := strings.SplitN(script, ",", 2)
+	if len(parts) == 1 {
+		n, err := strconv.Atoi(parts[0])
+		if err != nil || n <= 0 {
+			return PipelineModifier{}
+		}
+		if n == 1 {
+			return PipelineModifier{HeadLines: 1}
+		}
+		return PipelineModifier{StartLine: n, EndLine: n}
+	}
+
+	start, err := strconv.Atoi(parts[0])
+	if err != nil || start <= 0 {
+		return PipelineModifier{}
+	}
+	end, err := strconv.Atoi(parts[1])
+	if err != nil || end <= 0 {
+		return PipelineModifier{}
+	}
+	// Normalize: start=1 is equivalent to head.
+	if start == 1 {
+		return PipelineModifier{HeadLines: end}
+	}
+	return PipelineModifier{StartLine: start, EndLine: end}
 }
 
 // extractCall extracts a parsedCommand from a CallExpr AST node.

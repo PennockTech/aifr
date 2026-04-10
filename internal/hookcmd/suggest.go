@@ -19,15 +19,17 @@ type Suggestion struct {
 	ToolArgs map[string]any
 }
 
-// PipelineModifier captures a trailing | head or | tail in a pipeline.
+// PipelineModifier captures a trailing | head, | tail, or | sed -n in a pipeline.
 type PipelineModifier struct {
 	HeadLines int // > 0 if piped to head -n N
 	TailLines int // > 0 if piped to tail -n N
+	StartLine int // > 0 if piped to sed -n extracting from this line (1-based)
+	EndLine   int // > 0 if piped to sed -n extracting to this line (1-based)
 }
 
 // IsSet reports whether any pipeline modifier is active.
 func (m PipelineModifier) IsSet() bool {
-	return m.HeadLines > 0 || m.TailLines > 0
+	return m.HeadLines > 0 || m.TailLines > 0 || m.StartLine > 0
 }
 
 // AnalyzeCommand checks if a shell command can be replaced by an aifr command.
@@ -141,6 +143,17 @@ func suggestCat(args []string, mod PipelineModifier) *Suggestion {
 			map[string]any{"path": files[0], "lines": lines})
 	}
 
+	if mod.StartLine > 0 {
+		if len(files) != 1 {
+			return nil
+		}
+		lines := fmt.Sprintf("%d:%d", mod.StartLine, mod.EndLine)
+		return makeSuggestion("cat",
+			fmt.Sprintf("aifr read --lines=%s %s", lines, shellQuote(files[0])),
+			"aifr_read",
+			map[string]any{"path": files[0], "lines": lines})
+	}
+
 	if len(files) == 1 {
 		return makeSuggestion("cat",
 			"aifr read "+shellQuote(files[0]),
@@ -239,7 +252,7 @@ func suggestTail(args []string, mod PipelineModifier) *Suggestion {
 }
 
 func suggestSearch(baseCmd string, args []string, mod PipelineModifier) *Suggestion {
-	if mod.TailLines > 0 {
+	if mod.TailLines > 0 || mod.StartLine > 0 {
 		return nil
 	}
 
@@ -297,7 +310,7 @@ func suggestSearch(baseCmd string, args []string, mod PipelineModifier) *Suggest
 }
 
 func suggestFind(args []string, mod PipelineModifier) *Suggestion {
-	if mod.TailLines > 0 {
+	if mod.TailLines > 0 || mod.StartLine > 0 {
 		return nil
 	}
 
@@ -349,7 +362,7 @@ func suggestFind(args []string, mod PipelineModifier) *Suggestion {
 }
 
 func suggestList(args []string, mod PipelineModifier) *Suggestion {
-	if mod.TailLines > 0 {
+	if mod.TailLines > 0 || mod.StartLine > 0 {
 		return nil
 	}
 
@@ -580,7 +593,7 @@ func suggestGit(args []string, mod PipelineModifier) *Suggestion {
 }
 
 func suggestGitLog(args []string, mod PipelineModifier) *Suggestion {
-	if mod.TailLines > 0 {
+	if mod.TailLines > 0 || mod.StartLine > 0 {
 		return nil
 	}
 

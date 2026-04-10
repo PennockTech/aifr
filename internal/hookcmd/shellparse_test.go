@@ -98,6 +98,45 @@ func TestParseShellCommand_Pipeline(t *testing.T) {
 	}
 }
 
+func TestParseShellCommand_PipelineSed(t *testing.T) {
+	cases := []struct {
+		input     string
+		wantName  string
+		wantHead  int
+		wantStart int
+		wantEnd   int
+	}{
+		// sed -n '1,Np' normalizes to HeadLines.
+		{"cat file.go | sed -n '1,50p'", "cat", 50, 0, 0},
+		{"cat file.go | sed -n '1p'", "cat", 1, 0, 0},
+		// Arbitrary ranges set StartLine/EndLine.
+		{"cat file.go | sed -n '5,10p'", "cat", 0, 5, 10},
+		{"cat file.go | sed -n '100,200p'", "cat", 0, 100, 200},
+		// Single line extraction.
+		{"cat file.go | sed -n '42p'", "cat", 0, 42, 42},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			parsed, mod := parseShellCommand(tc.input)
+			if parsed == nil {
+				t.Fatal("expected parsed command, got nil")
+			}
+			if parsed.Name != tc.wantName {
+				t.Errorf("Name: got %q, want %q", parsed.Name, tc.wantName)
+			}
+			if mod.HeadLines != tc.wantHead {
+				t.Errorf("HeadLines: got %d, want %d", mod.HeadLines, tc.wantHead)
+			}
+			if mod.StartLine != tc.wantStart {
+				t.Errorf("StartLine: got %d, want %d", mod.StartLine, tc.wantStart)
+			}
+			if mod.EndLine != tc.wantEnd {
+				t.Errorf("EndLine: got %d, want %d", mod.EndLine, tc.wantEnd)
+			}
+		})
+	}
+}
+
 func TestParseShellCommand_Complex(t *testing.T) {
 	// All of these should return nil (too complex to analyze).
 	cases := []struct {

@@ -434,6 +434,54 @@ func TestAnalyzeCommand_PipelineHeadLs(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCommand_PipelineSedCat(t *testing.T) {
+	cases := []struct {
+		command string
+		want    string
+	}{
+		{"cat file.go | sed -n '5,10p'", "aifr read --lines=5:10 file.go"},
+		{"cat file.go | sed -n '42p'", "aifr read --lines=42:42 file.go"},
+		{"cat file.go | sed -n '100,200p'", "aifr read --lines=100:200 file.go"},
+		// start=1 normalizes to HeadLines, still produces the right suggestion.
+		{"cat file.go | sed -n '1,50p'", "aifr read --lines=1:50 file.go"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.command, func(t *testing.T) {
+			s := AnalyzeCommand(tc.command)
+			if s == nil {
+				t.Fatal("expected suggestion, got nil")
+			}
+			if s.AifrCommand != tc.want {
+				t.Errorf("got %q, want %q", s.AifrCommand, tc.want)
+			}
+			if s.ToolName != "aifr_read" {
+				t.Errorf("ToolName: got %q, want %q", s.ToolName, "aifr_read")
+			}
+		})
+	}
+}
+
+func TestAnalyzeCommand_PipelineSedNoSuggestion(t *testing.T) {
+	// sed line ranges on non-cat commands don't map to aifr parameters.
+	cases := []struct {
+		name    string
+		command string
+	}{
+		{"grep with sed range", "grep TODO . | sed -n '5,10p'"},
+		{"find with sed range", "find . -name '*.go' | sed -n '5,20p'"},
+		{"git log with sed range", "git log | sed -n '5,10p'"},
+		{"sed without -n", "cat file.go | sed '5,10p'"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := AnalyzeCommand(tc.command)
+			if s != nil {
+				t.Errorf("expected nil, got suggestion: %s", s.AifrCommand)
+			}
+		})
+	}
+}
+
 // --- MCP tool info tests ---
 
 func TestAnalyzeCommand_MCPToolArgs(t *testing.T) {
