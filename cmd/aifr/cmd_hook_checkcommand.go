@@ -19,7 +19,7 @@ shell command, and if aifr can handle it, outputs a hook response denying
 the Bash call and suggesting the aifr alternative.
 
 If the command is not something aifr handles, exits silently (exit 0,
-no output) so the Bash call proceeds normally.
+no output) so the Bash call continues through normal permission evaluation.
 
 Recognized commands: cat, head, tail, grep/rg, find, ls, wc, stat,
 diff, sed -n, sha256sum/md5sum, hexdump/xxd, git log, git diff.
