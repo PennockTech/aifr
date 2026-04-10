@@ -11,6 +11,8 @@ import (
 	"go.pennock.tech/aifr/internal/hookcmd"
 )
 
+var checkCommandMCP bool
+
 var checkCommandCmd = &cobra.Command{
 	Use:   "check-command",
 	Short: "Suggest aifr alternatives for Bash tool calls",
@@ -20,6 +22,12 @@ the Bash call and suggesting the aifr alternative.
 
 If the command is not something aifr handles, exits silently (exit 0,
 no output) so the Bash call continues through normal permission evaluation.
+
+Pipelines ending in | head -n N or | tail -n N are recognized and mapped
+to the appropriate aifr limit parameter (--max-count, --limit, --lines, etc.).
+
+When --mcp is set, or when an aifr MCP server is detected in .mcp.json,
+suggestions reference MCP tool calls instead of CLI sub-commands.
 
 Recognized commands: cat, head, tail, grep/rg, find, ls, wc, stat,
 diff, sed -n, sha256sum/md5sum, hexdump/xxd, git log, git diff.
@@ -48,7 +56,7 @@ Usage in Claude Code settings:
 			return err
 		}
 
-		result, err := hookcmd.CheckCommand(input)
+		result, err := hookcmd.CheckCommand(input, checkCommandMCP)
 		if err != nil {
 			return err
 		}
@@ -63,5 +71,7 @@ Usage in Claude Code settings:
 }
 
 func init() {
+	checkCommandCmd.Flags().BoolVar(&checkCommandMCP, "mcp", false,
+		"suggest MCP tool calls (auto-detected from .mcp.json and $AIFR_MCP if not set)")
 	hookCmd.AddCommand(checkCommandCmd)
 }

@@ -100,6 +100,29 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
+func TestSplitPipeline(t *testing.T) {
+	cases := []struct {
+		input string
+		want  []string
+	}{
+		{"cat file.go", []string{"cat file.go"}},
+		{"cat file.go | head -5", []string{"cat file.go ", " head -5"}},
+		{"a | b | c", []string{"a ", " b ", " c"}},
+		{"grep 'a|b' file", []string{"grep 'a|b' file"}}, // | inside quotes
+		{`grep "a|b" file`, []string{`grep "a|b" file`}}, // | inside double quotes
+		{"cmd1 || cmd2", []string{"cmd1 || cmd2"}},       // || is not a pipe
+		{"cat file | head | tail", []string{"cat file ", " head ", " tail"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			got := splitPipeline(tc.input)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("splitPipeline(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNonFlags(t *testing.T) {
 	cases := []struct {
 		input []string

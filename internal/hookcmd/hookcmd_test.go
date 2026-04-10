@@ -9,12 +9,13 @@ import (
 func TestCheckCommand_BashWithSuggestion(t *testing.T) {
 	input := `{
 		"session_id": "test-session",
+		"cwd": "/tmp/nonexistent",
 		"tool_name": "Bash",
 		"tool_input": {"command": "cat main.go"},
 		"hook_event_name": "PreToolUse"
 	}`
 
-	result, err := CheckCommand([]byte(input))
+	result, err := CheckCommand([]byte(input), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,12 +36,13 @@ func TestCheckCommand_BashWithSuggestion(t *testing.T) {
 func TestCheckCommand_BashNoSuggestion(t *testing.T) {
 	input := `{
 		"session_id": "test-session",
+		"cwd": "/tmp/nonexistent",
 		"tool_name": "Bash",
 		"tool_input": {"command": "go test ./..."},
 		"hook_event_name": "PreToolUse"
 	}`
 
-	result, err := CheckCommand([]byte(input))
+	result, err := CheckCommand([]byte(input), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,12 +54,13 @@ func TestCheckCommand_BashNoSuggestion(t *testing.T) {
 func TestCheckCommand_NonBashTool(t *testing.T) {
 	input := `{
 		"session_id": "test-session",
+		"cwd": "/tmp/nonexistent",
 		"tool_name": "Read",
 		"tool_input": {"file_path": "/tmp/test.go"},
 		"hook_event_name": "PreToolUse"
 	}`
 
-	result, err := CheckCommand([]byte(input))
+	result, err := CheckCommand([]byte(input), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,43 +70,52 @@ func TestCheckCommand_NonBashTool(t *testing.T) {
 }
 
 func TestCheckCommand_InvalidJSON(t *testing.T) {
-	_, err := CheckCommand([]byte("not json"))
+	_, err := CheckCommand([]byte("not json"), false)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 }
 
-// TestCheckCommand_PipelinePassthrough is an end-to-end wiring test verifying
-// that a command pipeline (containing shell operators) passes through
-// CheckCommand without a suggestion. The full scope of complex pipeline
-// detection is covered in suggest_test.go via AnalyzeCommand tests.
-func TestCheckCommand_PipelinePassthrough(t *testing.T) {
+// TestCheckCommand_PipelineSuggestion is an end-to-end wiring test verifying
+// that a command pipeline with a recognized | head tail produces a suggestion
+// with the appropriate per-command limit parameter. The full scope of pipeline
+// and complex command analysis is covered in suggest_test.go.
+func TestCheckCommand_PipelineSuggestion(t *testing.T) {
 	input := `{
 		"session_id": "test-session",
+		"cwd": "/tmp/nonexistent",
 		"tool_name": "Bash",
 		"tool_input": {"command": "git log --oneline | head -n 10"},
 		"hook_event_name": "PreToolUse"
 	}`
 
-	result, err := CheckCommand([]byte(input))
+	result, err := CheckCommand([]byte(input), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != nil {
-		t.Errorf("expected nil for pipeline command, got result with decision %q",
-			result.HookSpecificOutput.Decision)
+	if result == nil {
+		t.Fatal("expected suggestion for pipeline command, got nil")
+	}
+	if result.HookSpecificOutput.Decision != "deny" {
+		t.Errorf("expected deny, got %q", result.HookSpecificOutput.Decision)
+	}
+	// Verify the reason mentions the aifr log command with --max-count.
+	reason := result.HookSpecificOutput.Reason
+	if reason == "" {
+		t.Error("expected non-empty reason")
 	}
 }
 
 func TestCheckCommand_OutputFormat(t *testing.T) {
 	input := `{
 		"session_id": "s1",
+		"cwd": "/tmp/nonexistent",
 		"tool_name": "Bash",
 		"tool_input": {"command": "head -50 README.md"},
 		"hook_event_name": "PreToolUse"
 	}`
 
-	result, err := CheckCommand([]byte(input))
+	result, err := CheckCommand([]byte(input), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,5 +147,46 @@ func TestCheckCommand_OutputFormat(t *testing.T) {
 	reason, _ := hso["permissionDecisionReason"].(string)
 	if reason == "" {
 		t.Error("expected non-empty reason")
+	}
+}
+
+func TestCheckCommand_MCPMode(t *testing.T) {
+	input := `{
+		"session_id": "test-session",
+		"cwd": "/tmp/nonexistent",
+		"tool_name": "Bash",
+		"tool_input": {"command": "cat main.go"},
+		"hook_event_name": "PreToolUse"
+	}`
+
+	// CLI mode (forceMCP=false, no .mcp.json in /tmp/nonexistent)
+	cliResult, err := CheckCommand([]byte(input), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cliResult == nil {
+		t.Fatal("expected result")
+	}
+	cliReason := cliResult.HookSpecificOutput.Reason
+	if cliReason == "" {
+		t.Fatal("expected non-empty CLI reason")
+	}
+
+	// MCP mode (forceMCP=true)
+	mcpResult, err := CheckCommand([]byte(input), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mcpResult == nil {
+		t.Fatal("expected result")
+	}
+	mcpReason := mcpResult.HookSpecificOutput.Reason
+	if mcpReason == "" {
+		t.Fatal("expected non-empty MCP reason")
+	}
+
+	// CLI reason should reference the CLI command.
+	if cliReason == mcpReason {
+		t.Error("CLI and MCP reasons should differ")
 	}
 }

@@ -1,11 +1,15 @@
 // Copyright 2026 — see LICENSE file for terms.
 package hookcmd
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // HookInput is the JSON payload received from a Claude Code hook on stdin.
 type HookInput struct {
 	SessionID     string          `json:"session_id"`
+	CWD           string          `json:"cwd"`
 	ToolName      string          `json:"tool_name"`
 	ToolInput     json.RawMessage `json:"tool_input"`
 	HookEventName string          `json:"hook_event_name"`
@@ -30,7 +34,11 @@ type HookDecision struct {
 
 // CheckCommand parses a PreToolUse hook payload and returns a hook output
 // denying the command with an aifr suggestion, or nil if no suggestion applies.
-func CheckCommand(input []byte) (*HookOutput, error) {
+//
+// When forceMCP is true, suggestions always reference MCP tool calls.
+// Otherwise, MCP availability is auto-detected from the working directory's
+// .mcp.json and the AIFR_MCP environment variable.
+func CheckCommand(input []byte, forceMCP bool) (*HookOutput, error) {
 	var hi HookInput
 	if err := json.Unmarshal(input, &hi); err != nil {
 		return nil, err
@@ -50,13 +58,33 @@ func CheckCommand(input []byte) (*HookOutput, error) {
 		return nil, nil
 	}
 
+	mcpMode := forceMCP || detectMCPAvailable(hi.CWD)
+
+	var reason string
+	if mcpMode {
+		reason = formatMCPReason(suggestion)
+	} else {
+		reason = formatCLIReason(suggestion)
+	}
+
 	return &HookOutput{
 		HookSpecificOutput: &HookDecision{
 			HookEventName: "PreToolUse",
 			Decision:      "deny",
-			Reason: "This " + suggestion.Original +
-				" invocation can be handled by aifr with access controls. Use: " +
-				suggestion.AifrCommand,
+			Reason:        reason,
 		},
 	}, nil
+}
+
+func formatCLIReason(s *Suggestion) string {
+	return "This " + s.Original +
+		" invocation can be handled by aifr with access controls. Use: " +
+		s.AifrCommand
+}
+
+func formatMCPReason(s *Suggestion) string {
+	argsJSON, _ := json.Marshal(s.ToolArgs)
+	return fmt.Sprintf(
+		"This %s invocation can be handled by aifr with access controls. Use the %s tool: %s",
+		s.Original, s.ToolName, string(argsJSON))
 }

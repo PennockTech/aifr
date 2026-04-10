@@ -101,6 +101,59 @@ func hasShellOperators(s string) bool {
 	return false
 }
 
+// splitPipeline splits a command by unquoted pipe operators.
+// It recognizes || as a logical OR (kept in the stage, not split) and only
+// splits on single | pipe operators.
+func splitPipeline(s string) []string {
+	var stages []string
+	var cur strings.Builder
+	inSingle := false
+	inDouble := false
+	escaped := false
+	runes := []rune(s)
+
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if escaped {
+			cur.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' && !inSingle {
+			cur.WriteRune(r)
+			escaped = true
+			continue
+		}
+		if r == '\'' && !inDouble {
+			inSingle = !inSingle
+			cur.WriteRune(r)
+			continue
+		}
+		if r == '"' && !inSingle {
+			inDouble = !inDouble
+			cur.WriteRune(r)
+			continue
+		}
+		if r == '|' && !inSingle && !inDouble {
+			// || is logical OR, not a pipe — keep in current stage.
+			if i+1 < len(runes) && runes[i+1] == '|' {
+				cur.WriteRune(r)
+				cur.WriteRune(runes[i+1])
+				i++
+				continue
+			}
+			stages = append(stages, cur.String())
+			cur.Reset()
+			continue
+		}
+		cur.WriteRune(r)
+	}
+	if cur.Len() > 0 {
+		stages = append(stages, cur.String())
+	}
+	return stages
+}
+
 // baseName returns the last path component of cmd (strips directory prefix).
 func baseName(cmd string) string {
 	if idx := strings.LastIndex(cmd, "/"); idx >= 0 {

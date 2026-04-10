@@ -14,7 +14,8 @@ func TestAnalyzeCommand_NoSuggestion(t *testing.T) {
 		{"unrecognized command", "go build ./..."},
 		{"make", "make test"},
 		{"npm", "npm install"},
-		{"pipe chain", "cat file.go | head -10"},
+		{"3-stage pipeline", "cat file | grep pattern | head -5"},
+		{"unknown pipe target", "cat file | sort"},
 		{"double ampersand", "cd /tmp && ls"},
 		{"semicolon", "echo hello; echo world"},
 		{"subshell", "$(cat file.go)"},
@@ -29,6 +30,11 @@ func TestAnalyzeCommand_NoSuggestion(t *testing.T) {
 		{"sed without -n", "sed 's/foo/bar/' file.go"},
 		{"git status", "git status"},
 		{"git push", "git push origin main"},
+		{"wc with head", "wc -l file.go | head -5"},
+		{"stat with head", "stat file.go | head -5"},
+		{"diff with head", "diff a.go b.go | head -5"},
+		{"tail with head", "tail -20 file.go | head -5"},
+		{"head with tail", "head -20 file.go | tail -5"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,14 +48,15 @@ func TestAnalyzeCommand_NoSuggestion(t *testing.T) {
 
 func TestAnalyzeCommand_Cat(t *testing.T) {
 	cases := []struct {
-		command string
-		want    string
+		command  string
+		want     string
+		wantTool string
 	}{
-		{"cat file.go", "aifr read file.go"},
-		{"cat src/main.go", "aifr read src/main.go"},
-		{"/usr/bin/cat file.go", "aifr read file.go"},
-		{"cat file1.go file2.go", "aifr cat file1.go file2.go"},
-		{"cat -n file.go", "aifr read file.go"},
+		{"cat file.go", "aifr read file.go", "aifr_read"},
+		{"cat src/main.go", "aifr read src/main.go", "aifr_read"},
+		{"/usr/bin/cat file.go", "aifr read file.go", "aifr_read"},
+		{"cat file1.go file2.go", "aifr cat file1.go file2.go", "aifr_cat"},
+		{"cat -n file.go", "aifr read file.go", "aifr_read"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.command, func(t *testing.T) {
@@ -58,10 +65,13 @@ func TestAnalyzeCommand_Cat(t *testing.T) {
 				t.Fatal("expected suggestion, got nil")
 			}
 			if s.AifrCommand != tc.want {
-				t.Errorf("got %q, want %q", s.AifrCommand, tc.want)
+				t.Errorf("AifrCommand: got %q, want %q", s.AifrCommand, tc.want)
+			}
+			if s.ToolName != tc.wantTool {
+				t.Errorf("ToolName: got %q, want %q", s.ToolName, tc.wantTool)
 			}
 			if s.Original != "cat" {
-				t.Errorf("original: got %q, want %q", s.Original, "cat")
+				t.Errorf("Original: got %q, want %q", s.Original, "cat")
 			}
 		})
 	}
@@ -328,5 +338,145 @@ func TestAnalyzeCommand_AbsoluteCommandPath(t *testing.T) {
 	}
 	if s.AifrCommand != "aifr read --lines=1:5 file.go" {
 		t.Errorf("got %q", s.AifrCommand)
+	}
+}
+
+// --- Pipeline tests ---
+
+func TestAnalyzeCommand_PipelineHeadCat(t *testing.T) {
+	cases := []struct {
+		command string
+		want    string
+	}{
+		{"cat file.go | head -n 50", "aifr read --lines=1:50 file.go"},
+		{"cat file.go | head -10", "aifr read --lines=1:10 file.go"},
+		{"cat file.go | head", "aifr read --lines=1:10 file.go"}, // default 10
+	}
+	for _, tc := range cases {
+		t.Run(tc.command, func(t *testing.T) {
+			s := AnalyzeCommand(tc.command)
+			if s == nil {
+				t.Fatal("expected suggestion, got nil")
+			}
+			if s.AifrCommand != tc.want {
+				t.Errorf("got %q, want %q", s.AifrCommand, tc.want)
+			}
+			if s.ToolName != "aifr_read" {
+				t.Errorf("ToolName: got %q, want %q", s.ToolName, "aifr_read")
+			}
+		})
+	}
+}
+
+func TestAnalyzeCommand_PipelineTailCat(t *testing.T) {
+	s := AnalyzeCommand("cat file.go | tail -n 20")
+	if s == nil {
+		t.Fatal("expected suggestion, got nil")
+	}
+	if s.AifrCommand != "aifr read --lines=-20: file.go" {
+		t.Errorf("got %q", s.AifrCommand)
+	}
+}
+
+func TestAnalyzeCommand_PipelineHeadGitLog(t *testing.T) {
+	cases := []struct {
+		command string
+		want    string
+	}{
+		{"git log --oneline | head -n 10", "aifr log --oneline --max-count=10"},
+		{"git log | head -n 5", "aifr log --max-count=5"},
+		{"git log --oneline | head -20", "aifr log --oneline --max-count=20"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.command, func(t *testing.T) {
+			s := AnalyzeCommand(tc.command)
+			if s == nil {
+				t.Fatal("expected suggestion, got nil")
+			}
+			if s.AifrCommand != tc.want {
+				t.Errorf("got %q, want %q", s.AifrCommand, tc.want)
+			}
+			if s.ToolName != "aifr_log" {
+				t.Errorf("ToolName: got %q, want %q", s.ToolName, "aifr_log")
+			}
+		})
+	}
+}
+
+func TestAnalyzeCommand_PipelineHeadGrep(t *testing.T) {
+	s := AnalyzeCommand("grep -rn TODO . | head -n 20")
+	if s == nil {
+		t.Fatal("expected suggestion, got nil")
+	}
+	if s.AifrCommand != "aifr search --max-matches=20 TODO ." {
+		t.Errorf("got %q", s.AifrCommand)
+	}
+}
+
+func TestAnalyzeCommand_PipelineHeadFind(t *testing.T) {
+	s := AnalyzeCommand("find . -name '*.go' | head -n 30")
+	if s == nil {
+		t.Fatal("expected suggestion, got nil")
+	}
+	if s.AifrCommand != "aifr find . --name='*.go' --limit=30" {
+		t.Errorf("got %q", s.AifrCommand)
+	}
+}
+
+func TestAnalyzeCommand_PipelineHeadLs(t *testing.T) {
+	s := AnalyzeCommand("ls -la src/ | head -n 20")
+	if s == nil {
+		t.Fatal("expected suggestion, got nil")
+	}
+	if s.AifrCommand != "aifr list src/ --limit=20" {
+		t.Errorf("got %q", s.AifrCommand)
+	}
+}
+
+// --- MCP tool info tests ---
+
+func TestAnalyzeCommand_MCPToolArgs(t *testing.T) {
+	cases := []struct {
+		name     string
+		command  string
+		wantTool string
+		wantArg  string
+		wantVal  any
+	}{
+		{"cat path", "cat main.go", "aifr_read", "path", "main.go"},
+		{"grep pattern", "grep TODO src/", "aifr_search", "pattern", "TODO"},
+		{"find name", "find . -name '*.go'", "aifr_find", "name", "*.go"},
+		{"git log oneline", "git log --oneline", "aifr_log", "format", "oneline"},
+		{"pipeline max_count", "git log | head -5", "aifr_log", "max_count", 5},
+		{"pipeline limit", "find . | head -30", "aifr_find", "limit", 30},
+		{"diff paths", "diff a.go b.go", "aifr_diff", "path_a", "a.go"},
+		{"checksum algo", "sha256sum f.go", "aifr_checksum", "algorithm", "sha256"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := AnalyzeCommand(tc.command)
+			if s == nil {
+				t.Fatal("expected suggestion, got nil")
+			}
+			if s.ToolName != tc.wantTool {
+				t.Errorf("ToolName: got %q, want %q", s.ToolName, tc.wantTool)
+			}
+			got, ok := s.ToolArgs[tc.wantArg]
+			if !ok {
+				t.Errorf("ToolArgs missing key %q; args=%v", tc.wantArg, s.ToolArgs)
+				return
+			}
+			// Compare with type awareness: int vs float64 from JSON.
+			switch want := tc.wantVal.(type) {
+			case int:
+				if got != want {
+					t.Errorf("ToolArgs[%q]: got %v (%T), want %v", tc.wantArg, got, got, want)
+				}
+			default:
+				if got != want {
+					t.Errorf("ToolArgs[%q]: got %v, want %v", tc.wantArg, got, want)
+				}
+			}
+		})
 	}
 }
