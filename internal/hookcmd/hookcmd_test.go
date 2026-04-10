@@ -3,6 +3,7 @@ package hookcmd
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -99,10 +100,12 @@ func TestCheckCommand_PipelineSuggestion(t *testing.T) {
 	if result.HookSpecificOutput.Decision != "deny" {
 		t.Errorf("expected deny, got %q", result.HookSpecificOutput.Decision)
 	}
-	// Verify the reason mentions the aifr log command with --max-count.
 	reason := result.HookSpecificOutput.Reason
-	if reason == "" {
-		t.Error("expected non-empty reason")
+	if !strings.Contains(reason, "aifr log") && !strings.Contains(reason, "aifr_log") {
+		t.Errorf("reason should mention aifr log, got %q", reason)
+	}
+	if !strings.Contains(reason, "max-count") && !strings.Contains(reason, "max_count") {
+		t.Errorf("reason should mention max-count/max_count, got %q", reason)
 	}
 }
 
