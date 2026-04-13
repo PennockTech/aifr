@@ -15,7 +15,7 @@ func TestCatExplicitPaths(t *testing.T) {
 	f3 := mkTestFile(t, dir, "c.go", "package c\n")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat([]string{f1, f2, f3}, "", CatParams{})
+	resp, err := eng.Cat([]string{f1, f2, f3}, nil, CatParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestCatDiscoveryMode(t *testing.T) {
 	mkTestFile(t, dir, "sub/c.go", "package c\n")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{Name: "*.go", MaxDepth: -1})
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{Name: "*.go", MaxDepth: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestCatExcludePath(t *testing.T) {
 	mkTestFile(t, dir, "internal/lib.go", "package lib\n")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{
 		Name:        "*.go",
 		ExcludePath: "**/vendor/**",
 		MaxDepth:    -1,
@@ -84,7 +84,7 @@ func TestCatLinesLimit(t *testing.T) {
 	path := mkTestFile(t, dir, "multi.txt", content)
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat([]string{path}, "", CatParams{Lines: 5})
+	resp, err := eng.Cat([]string{path}, nil, CatParams{Lines: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCatBinarySkip(t *testing.T) {
 	textPath := mkTestFile(t, dir, "text.txt", "hello\n")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat([]string{binPath, textPath}, "", CatParams{})
+	resp, err := eng.Cat([]string{binPath, textPath}, nil, CatParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestCatAccessDenied(t *testing.T) {
 	textPath := mkTestFile(t, dir, "ok.txt", "fine\n")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat([]string{envFile, textPath}, "", CatParams{})
+	resp, err := eng.Cat([]string{envFile, textPath}, nil, CatParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestCatMaxTotalSize(t *testing.T) {
 	mkTestFile(t, dir, "c.txt", bigContent)
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{MaxTotalSize: 1200, MaxDepth: -1})
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{MaxTotalSize: 1200, MaxDepth: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestCatEmptyFile(t *testing.T) {
 	path := mkTestFile(t, dir, "empty.txt", "")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat([]string{path}, "", CatParams{})
+	resp, err := eng.Cat([]string{path}, nil, CatParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestCatDiscoverySorted(t *testing.T) {
 	mkTestFile(t, dir, "m.go", "m\n")
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{Name: "*.go", MaxDepth: -1})
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{Name: "*.go", MaxDepth: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestCatMaxFiles(t *testing.T) {
 	}
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{MaxDepth: -1, MaxFiles: 3})
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{MaxDepth: -1, MaxFiles: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,4 +231,125 @@ func TestCatMaxFiles(t *testing.T) {
 	if len(resp.Files) != 3 {
 		t.Errorf("files count = %d, want 3", len(resp.Files))
 	}
+}
+
+func TestCatDiscoveryMultipleRoots(t *testing.T) {
+	base := t.TempDir()
+	dirA := filepath.Join(base, "nats-pi-a")
+	dirB := filepath.Join(base, "nats-pi-b")
+	mkTestFile(t, dirA, "README.md", "# Project A\n")
+	mkTestFile(t, dirA, "main.go", "package main\n")
+	mkTestFile(t, dirB, "README.md", "# Project B\n")
+	mkTestFile(t, dirB, "lib.go", "package lib\n")
+	eng := newTestEngine(t, base)
+
+	resp, err := eng.Cat(nil, []string{dirA, dirB}, CatParams{Name: "README.md", MaxDepth: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Mode != "discover" {
+		t.Errorf("mode = %q, want discover", resp.Mode)
+	}
+	if resp.FilesRead != 2 {
+		t.Errorf("files_read = %d, want 2 (one README.md per root)", resp.FilesRead)
+	}
+
+	// Root should be empty when multiple roots are provided.
+	if resp.Root != "" {
+		t.Errorf("root = %q, want empty for multi-root", resp.Root)
+	}
+
+	// Both READMEs should be present with correct content.
+	var contents []string
+	for _, f := range resp.Files {
+		contents = append(contents, f.Content)
+	}
+	if !sliceContains(contents, "# Project A\n") {
+		t.Error("missing content from nats-pi-a/README.md")
+	}
+	if !sliceContains(contents, "# Project B\n") {
+		t.Error("missing content from nats-pi-b/README.md")
+	}
+}
+
+func TestCatDiscoveryMultipleRootsPreservesRootOrder(t *testing.T) {
+	base := t.TempDir()
+	dirZ := filepath.Join(base, "z-proj")
+	dirA := filepath.Join(base, "a-proj")
+	mkTestFile(t, dirZ, "notes.txt", "z-notes\n")
+	mkTestFile(t, dirA, "notes.txt", "a-notes\n")
+	eng := newTestEngine(t, base)
+
+	// Pass z-proj first — its files should appear first despite alphabetical ordering.
+	resp, err := eng.Cat(nil, []string{dirZ, dirA}, CatParams{Name: "notes.txt", MaxDepth: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.FilesRead != 2 {
+		t.Fatalf("files_read = %d, want 2", resp.FilesRead)
+	}
+	if resp.Files[0].Content != "z-notes\n" {
+		t.Errorf("first file content = %q, want z-notes (root order not preserved)", resp.Files[0].Content)
+	}
+	if resp.Files[1].Content != "a-notes\n" {
+		t.Errorf("second file content = %q, want a-notes", resp.Files[1].Content)
+	}
+}
+
+func TestCatDiscoveryMultipleRootsRelPaths(t *testing.T) {
+	base := t.TempDir()
+	dirA := filepath.Join(base, "proj-a")
+	dirB := filepath.Join(base, "proj-b")
+	mkTestFile(t, dirA, "sub/data.txt", "a-data\n")
+	mkTestFile(t, dirB, "sub/data.txt", "b-data\n")
+	eng := newTestEngine(t, base)
+
+	resp, err := eng.Cat(nil, []string{dirA, dirB}, CatParams{Name: "data.txt", MaxDepth: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.FilesRead != 2 {
+		t.Fatalf("files_read = %d, want 2", resp.FilesRead)
+	}
+
+	// Each file's RelPath should be relative to its own root.
+	for _, f := range resp.Files {
+		if f.RelPath != filepath.Join("sub", "data.txt") {
+			t.Errorf("relpath = %q, want sub/data.txt", f.RelPath)
+		}
+	}
+}
+
+func TestCatDiscoveryMultipleRootsSharedLimits(t *testing.T) {
+	base := t.TempDir()
+	dirA := filepath.Join(base, "proj-a")
+	dirB := filepath.Join(base, "proj-b")
+	bigContent := strings.Repeat("x", 800) + "\n"
+	mkTestFile(t, dirA, "big.txt", bigContent)
+	mkTestFile(t, dirB, "big.txt", bigContent)
+	mkTestFile(t, dirB, "big2.txt", bigContent)
+	eng := newTestEngine(t, base)
+
+	resp, err := eng.Cat(nil, []string{dirA, dirB}, CatParams{
+		MaxDepth:     -1,
+		MaxTotalSize: 1600, // enough for 2 files but not 3
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Truncated {
+		t.Error("expected truncated=true when size limit exceeded across roots")
+	}
+	if resp.FilesRead >= 3 {
+		t.Errorf("files_read = %d, expected < 3 (limit should apply across roots)", resp.FilesRead)
+	}
+}
+
+func sliceContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }

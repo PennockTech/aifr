@@ -220,7 +220,7 @@ func TestCatMaxFilesComplete(t *testing.T) {
 	}
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{Name: "*.go", MaxDepth: -1, MaxFiles: 2})
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{Name: "*.go", MaxDepth: -1, MaxFiles: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestCatMaxTotalSizeComplete(t *testing.T) {
 	}
 	eng := newTestEngine(t, dir)
 
-	resp, err := eng.Cat(nil, dir, CatParams{Name: "*.txt", MaxDepth: -1, MaxTotalSize: 2048})
+	resp, err := eng.Cat(nil, []string{dir}, CatParams{Name: "*.txt", MaxDepth: -1, MaxTotalSize: 2048})
 	if err != nil {
 		t.Fatal(err)
 	}

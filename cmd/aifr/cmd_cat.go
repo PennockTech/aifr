@@ -31,7 +31,7 @@ var catCmd = &cobra.Command{
   Discovery:   aifr cat --name '*.go' --exclude-path '**/vendor/**' ./src/
 
 Discovery mode activates when --name or --exclude-path flags are set.
-In discovery mode, exactly one positional arg (the root directory) is expected.
+In discovery mode, positional args are root directories to search.
 
 Divider formats for --format text:
   plain   --- path/to/file ---
@@ -60,9 +60,9 @@ Divider formats for --format text:
 
 		var resp *protocol.CatResponse
 		if isDiscovery {
-			resp, err = eng.Cat(nil, args[0], params)
+			resp, err = eng.Cat(nil, args, params)
 		} else {
-			resp, err = eng.Cat(args, "", params)
+			resp, err = eng.Cat(args, nil, params)
 		}
 		if err != nil {
 			exitWithError(err)

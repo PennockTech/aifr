@@ -684,7 +684,11 @@ func (s *Server) handleCat(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		MaxFiles:     args.MaxFiles,
 	}
 
-	resp, err := s.engine.Cat(args.Paths, args.Root, params)
+	var roots []string
+	if args.Root != "" {
+		roots = []string{args.Root}
+	}
+	resp, err := s.engine.Cat(args.Paths, roots, params)
 	if err != nil {
 		return toolError(err.Error())
 	}
