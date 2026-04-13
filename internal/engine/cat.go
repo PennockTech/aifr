@@ -32,10 +32,16 @@ type CatParams struct {
 	MaxFiles     int    // 0 = use default
 }
 
+// catFile pairs an absolute path with its pre-computed relative path.
+type catFile struct {
+	absPath string
+	relPath string // relative to discovery root; empty in explicit mode
+}
+
 // Cat concatenates contents of multiple files.
 // If paths is non-empty, reads those files in order (explicit mode).
-// If paths is empty and root is set, discovers files under root (discovery mode).
-func (e *Engine) Cat(paths []string, root string, params CatParams) (*protocol.CatResponse, error) {
+// If paths is empty and roots is non-empty, discovers files under each root (discovery mode).
+func (e *Engine) Cat(paths []string, roots []string, params CatParams) (*protocol.CatResponse, error) {
 	maxTotal := params.MaxTotalSize
 	if maxTotal <= 0 {
 		maxTotal = DefaultMaxTotalSize
@@ -51,31 +57,47 @@ func (e *Engine) Cat(paths []string, root string, params CatParams) (*protocol.C
 
 	if len(paths) > 0 {
 		resp.Mode = "explicit"
-		e.catReadFiles(paths, "", params, maxTotal, maxFiles, resp)
-	} else if root != "" {
+		files := make([]catFile, len(paths))
+		for i, p := range paths {
+			files[i] = catFile{absPath: p}
+		}
+		e.catReadFiles(files, params, maxTotal, maxFiles, resp)
+	} else if len(roots) > 0 {
 		resp.Mode = "discover"
-		resolved, err := e.checkAccess(root)
-		if err != nil {
-			return nil, err
+
+		var allFiles []catFile
+		for _, root := range roots {
+			resolved, err := e.checkAccess(root)
+			if err != nil {
+				return nil, err
+			}
+
+			info, err := os.Stat(resolved)
+			if err != nil {
+				return nil, protocol.NewPathError(protocol.ErrNotFound, root, "path does not exist")
+			}
+			if !info.IsDir() {
+				return nil, protocol.NewPathError(protocol.ErrIsDirectory, root, "cat discovery mode requires a directory")
+			}
+
+			// Discover files under this root.
+			discovered := e.catDiscover(resolved, resolved, params, 0)
+
+			// Sort within each root for deterministic output.
+			slices.SortFunc(discovered, func(a, b catFile) int {
+				return strings.Compare(a.absPath, b.absPath)
+			})
+
+			allFiles = append(allFiles, discovered...)
 		}
 
-		info, err := os.Stat(resolved)
-		if err != nil {
-			return nil, protocol.NewPathError(protocol.ErrNotFound, root, "path does not exist")
-		}
-		if !info.IsDir() {
-			return nil, protocol.NewPathError(protocol.ErrIsDirectory, root, "cat discovery mode requires a directory")
+		// Set Root when there is exactly one root (backward-compatible).
+		if len(roots) == 1 {
+			resolved, _ := e.checkAccess(roots[0])
+			resp.Root = resolved
 		}
 
-		resp.Root = resolved
-
-		// Discover files.
-		discovered := e.catDiscover(resolved, resolved, params, 0)
-
-		// Sort for deterministic output.
-		slices.Sort(discovered)
-
-		e.catReadFiles(discovered, resolved, params, maxTotal, maxFiles, resp)
+		e.catReadFiles(allFiles, params, maxTotal, maxFiles, resp)
 	} else {
 		return nil, protocol.NewError("INVALID_ARGS", "cat requires either explicit paths or a root directory")
 	}
@@ -85,14 +107,14 @@ func (e *Engine) Cat(paths []string, root string, params CatParams) (*protocol.C
 	return resp, nil
 }
 
-// catDiscover walks a directory tree collecting file paths matching filters.
-func (e *Engine) catDiscover(root, dir string, params CatParams, depth int) []string {
+// catDiscover walks a directory tree collecting files matching filters.
+func (e *Engine) catDiscover(root, dir string, params CatParams, depth int) []catFile {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
 
-	var result []string
+	var result []catFile
 	for _, de := range entries {
 		fullPath := filepath.Join(dir, de.Name())
 
@@ -138,34 +160,27 @@ func (e *Engine) catDiscover(root, dir string, params CatParams, depth int) []st
 			continue // silently skip inaccessible in discovery
 		}
 
-		result = append(result, fullPath)
+		rel, _ := filepath.Rel(root, fullPath)
+		result = append(result, catFile{absPath: fullPath, relPath: rel})
 	}
 	return result
 }
 
 // catReadFiles reads a list of files and populates the response.
-func (e *Engine) catReadFiles(paths []string, root string, params CatParams, maxTotal int64, maxFiles int, resp *protocol.CatResponse) {
+func (e *Engine) catReadFiles(files []catFile, params CatParams, maxTotal int64, maxFiles int, resp *protocol.CatResponse) {
 	var totalBytes int64
 
-	for _, path := range paths {
+	for _, cf := range files {
 		if len(resp.Files) >= maxFiles {
 			resp.Truncated = true
 			resp.Warning = "max_files_limit"
 			break
 		}
 
-		entry := protocol.CatEntry{Path: path}
-
-		// Compute relative path if in discovery mode.
-		if root != "" {
-			rel, err := filepath.Rel(root, path)
-			if err == nil {
-				entry.RelPath = rel
-			}
-		}
+		entry := protocol.CatEntry{Path: cf.absPath, RelPath: cf.relPath}
 
 		// Check access (for explicit mode; discovery already checked).
-		resolved, err := e.checkAccess(path)
+		resolved, err := e.checkAccess(cf.absPath)
 		if err != nil {
 			if ae, ok := err.(*protocol.AifrError); ok {
 				entry.Error = ae.Code
