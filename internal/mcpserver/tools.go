@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -188,20 +189,44 @@ func toolLog() *mcp.Tool {
 		Name: "aifr_log",
 		Description: `Git commit log with structured entries (hash, author, date, message, files changed).
 
+The "ref" argument accepts gitrevisions(7) syntax, including ranges:
+  HEAD                single revision (default)
+  v1..v2              commits reachable from v2 but not v1
+  v1...v2             symmetric difference (each entry tagged with side: left|right)
+  ^rev                exclude rev (combine with positive tips, e.g. "HEAD ^v1")
+  rev^!               just rev
+  rev^@               all parents of rev
+  rev^-[N]            equivalent to rev^N..rev (default N=1)
+Single-revision forms: HEAD, branches, tags, full/short hashes, HEAD~3, HEAD^2,
+HEAD^{commit}, HEAD^{/regex}, @, etc.
+
 Formats: json (default, structured), text (git-log style), oneline (compact hash+subject).
 For text format, divider controls layout: plain (default) or xml (XML-tagged with escaped content).
-Use verbose=true in json mode for tree_hash, parent_hashes, and committer details.`,
+Use verbose=true in json mode for tree_hash, parent_hashes, and committer details.
+
+Filters are applied after the walk, before pagination:
+  path GLOB     keep commits touching matching paths (doublestar glob)
+  since/until   ISO-8601 / RFC3339 (or YYYY-MM-DD) author-date bounds
+  author REGEX  match against "Name <email>"
+  grep REGEX    match against the commit message
+Use first_parent=true to follow only the first parent of merge commits.`,
 		InputSchema: mustSchema(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"repo":         map[string]any{"type": "string", "description": "Named repo, filesystem path, or empty for auto-detect from cwd"},
-				"ref":          map[string]any{"type": "string", "description": "Git ref (default HEAD)"},
+				"ref":          map[string]any{"type": "string", "description": "Git revision spec; supports ranges like v1..v2, v1...v2, ^rev, rev^!, rev^@, rev^-N (default HEAD)"},
 				"max_count":    map[string]any{"type": "integer", "description": "Max commits (default 20)", "default": 20},
 				"skip":         map[string]any{"type": "integer", "description": "Skip this many commits before collecting results", "default": 0},
 				"continuation": map[string]any{"type": "string", "description": "Continuation token from previous log"},
 				"format":       map[string]any{"type": "string", "enum": []string{"json", "text", "oneline"}, "description": "Output format (default: json)", "default": "json"},
 				"divider":      map[string]any{"type": "string", "enum": []string{"plain", "xml"}, "description": "Divider format for text output (default: plain)", "default": "plain"},
 				"verbose":      map[string]any{"type": "boolean", "description": "Include tree hash, parent hashes, committer details in JSON output", "default": false},
+				"first_parent": map[string]any{"type": "boolean", "description": "Follow only the first parent of merge commits", "default": false},
+				"path":         map[string]any{"type": "string", "description": "Doublestar glob; keep commits that touched a matching path"},
+				"since":        map[string]any{"type": "string", "description": "Keep commits with author date >= this time (RFC3339 or YYYY-MM-DD)"},
+				"until":        map[string]any{"type": "string", "description": "Keep commits with author date <= this time (RFC3339 or YYYY-MM-DD)"},
+				"author":       map[string]any{"type": "string", "description": "Regex matched against \"Name <email>\""},
+				"grep":         map[string]any{"type": "string", "description": "Regex matched against the commit message"},
 			},
 		}),
 	}
@@ -540,19 +565,60 @@ func (s *Server) handleLog(_ context.Context, req *mcp.CallToolRequest) (*mcp.Ca
 		Format       string `json:"format"`
 		Divider      string `json:"divider"`
 		Verbose      bool   `json:"verbose"`
+		FirstParent  bool   `json:"first_parent"`
+		Path         string `json:"path"`
+		Since        string `json:"since"`
+		Until        string `json:"until"`
+		Author       string `json:"author"`
+		Grep         string `json:"grep"`
 	}
 	if err := unmarshalArgs(req, &args); err != nil {
 		return toolError(err.Error())
 	}
 	args.Format = resolveMCPFormat(args.Format)
 
-	params := engine.LogParams{MaxCount: args.MaxCount, Skip: args.Skip, Verbose: args.Verbose}
+	params := engine.LogParams{
+		MaxCount:    args.MaxCount,
+		Skip:        args.Skip,
+		Verbose:     args.Verbose,
+		FirstParent: args.FirstParent,
+		PathGlob:    args.Path,
+	}
+	if args.Since != "" {
+		t, err := engine.ParseLogDate(args.Since)
+		if err != nil {
+			return toolError(fmt.Sprintf("since: %v", err))
+		}
+		params.Since = &t
+	}
+	if args.Until != "" {
+		t, err := engine.ParseLogDate(args.Until)
+		if err != nil {
+			return toolError(fmt.Sprintf("until: %v", err))
+		}
+		params.Until = &t
+	}
+	if args.Author != "" {
+		re, err := regexp.Compile(args.Author)
+		if err != nil {
+			return toolError(fmt.Sprintf("author: %v", err))
+		}
+		params.Author = re
+	}
+	if args.Grep != "" {
+		re, err := regexp.Compile(args.Grep)
+		if err != nil {
+			return toolError(fmt.Sprintf("grep: %v", err))
+		}
+		params.Grep = re
+	}
 	if args.Continuation != "" {
 		tok, err := s.decodeContinuation(args.Continuation, "log")
 		if err != nil {
 			return toolError(err.Error())
 		}
 		params.StartHash = tok.Hash
+		params.StartRev = tok.RevSpec
 		if tok.Limit > 0 {
 			params.MaxCount = tok.Limit
 		}

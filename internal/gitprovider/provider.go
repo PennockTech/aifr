@@ -6,7 +6,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -102,44 +101,40 @@ func (p *Provider) openRepoFromWalk(startDir, desc string) (*git.Repository, str
 		fmt.Sprintf("no git repository found at or above %s", desc))
 }
 
-// ResolveRef resolves a ref string to a commit hash.
-// Handles: branch names, tag names, commit hashes, HEAD, HEAD~N, branch^N.
+// ResolveRef resolves a ref string to a commit object.
+//
+// Delegates the bulk of the parsing to go-git's ResolveRevision, which
+// understands the gitrevisions(7) grammar for single revisions:
+// HEAD, branches, tags, full and prefix hashes, ~N / ^N (correctly
+// honouring the Nth parent on merge commits), arbitrary chaining like
+// HEAD~3^2~1, type peeling (^{commit}, ^{tree}, ^{blob}, ^{}), and text
+// search (^{/regex}, :/regex). Annotated tags are peeled automatically.
+//
+// As a convenience also tried by the previous implementation, a bare
+// "@" is accepted as an alias for HEAD, and a name that does not contain
+// a slash is also tried as "origin/<name>" so that "main" resolves to
+// the remote-tracking branch when no local branch of that name exists.
 func (p *Provider) ResolveRef(repo *git.Repository, ref string) (*object.Commit, error) {
-	// Handle relative refs (HEAD~3, main~2, branch^1, etc.)
-	baseRef, offset, isRelative := parseRelativeRef(ref)
-
-	var hash plumbing.Hash
-
-	if isRelative {
-		commit, err := p.resolveSimpleRef(repo, baseRef)
-		if err != nil {
-			return nil, err
-		}
-		return walkParents(commit, offset)
+	if ref == "" {
+		return nil, protocol.NewError(protocol.ErrInvalidRef, "empty ref")
 	}
 
-	// Try as a direct ref first.
-	commit, err := p.resolveSimpleRef(repo, ref)
-	if err == nil {
+	// "@" is the gitrevisions(7) alias for HEAD; ResolveRevision in
+	// go-git 5.17 does not handle it, so substitute up front.
+	canonical := ref
+	if canonical == "@" {
+		canonical = "HEAD"
+	}
+
+	if commit, err := p.tryResolve(repo, canonical); err == nil {
 		return commit, nil
 	}
 
-	// Try as a short commit hash.
-	if len(ref) >= 4 && len(ref) <= 40 && isHex(ref) {
-		// Try to match against objects.
-		iter, iterErr := repo.CommitObjects()
-		if iterErr == nil {
-			defer iter.Close()
-			_ = iter.ForEach(func(c *object.Commit) error {
-				if strings.HasPrefix(c.Hash.String(), ref) {
-					hash = c.Hash
-					return fmt.Errorf("found") // stop iteration
-				}
-				return nil
-			})
-			if !hash.IsZero() {
-				return repo.CommitObject(hash)
-			}
+	// Convenience fallback: bare names without a slash also try the
+	// origin remote-tracking branch (mirrors prior behaviour).
+	if !strings.ContainsAny(ref, "/^~@:") {
+		if commit, err := p.tryResolve(repo, "refs/remotes/origin/"+ref); err == nil {
+			return commit, nil
 		}
 	}
 
@@ -147,67 +142,14 @@ func (p *Provider) ResolveRef(repo *git.Repository, ref string) (*object.Commit,
 		fmt.Sprintf("cannot resolve ref %q", ref))
 }
 
-// resolveSimpleRef resolves a non-relative ref (branch, tag, HEAD, full hash).
-func (p *Provider) resolveSimpleRef(repo *git.Repository, ref string) (*object.Commit, error) {
-	// Try HEAD.
-	if ref == "HEAD" {
-		head, err := repo.Head()
-		if err != nil {
-			return nil, protocol.NewError(protocol.ErrInvalidRef, "cannot resolve HEAD")
-		}
-		return repo.CommitObject(head.Hash())
+// tryResolve attempts to resolve a single revision via go-git.
+// Returns the underlying error so callers can decide whether to fall back.
+func (p *Provider) tryResolve(repo *git.Repository, rev string) (*object.Commit, error) {
+	hashPtr, err := repo.ResolveRevision(plumbing.Revision(rev))
+	if err != nil {
+		return nil, err
 	}
-
-	// Try as a full hash.
-	if len(ref) == 40 && isHex(ref) {
-		hash := plumbing.NewHash(ref)
-		return repo.CommitObject(hash)
-	}
-
-	// Try as a branch (local).
-	branchRef := plumbing.NewBranchReferenceName(ref)
-	r, err := repo.Reference(branchRef, true)
-	if err == nil {
-		return repo.CommitObject(r.Hash())
-	}
-
-	// Try as a remote-tracking branch (refs/remotes/...).
-	remoteRef := plumbing.NewRemoteReferenceName("origin", ref)
-	r, err = repo.Reference(remoteRef, true)
-	if err == nil {
-		return repo.CommitObject(r.Hash())
-	}
-
-	// Try as a remote ref with explicit remote prefix (e.g., "origin/main").
-	if strings.Contains(ref, "/") {
-		fullRef := plumbing.ReferenceName("refs/remotes/" + ref)
-		r, err = repo.Reference(fullRef, true)
-		if err == nil {
-			return repo.CommitObject(r.Hash())
-		}
-	}
-
-	// Try as a tag.
-	tagRef := plumbing.NewTagReferenceName(ref)
-	r, err = repo.Reference(tagRef, true)
-	if err == nil {
-		// May be an annotated tag; peel to commit.
-		commit, err := repo.CommitObject(r.Hash())
-		if err == nil {
-			return commit, nil
-		}
-		// Try peeling annotated tag → commit.
-		tagObj, tagErr := repo.TagObject(r.Hash())
-		if tagErr == nil {
-			targetCommit, targetErr := tagObj.Commit()
-			if targetErr == nil {
-				return targetCommit, nil
-			}
-		}
-	}
-
-	return nil, protocol.NewError(protocol.ErrInvalidRef,
-		fmt.Sprintf("cannot resolve ref %q", ref))
+	return repo.CommitObject(*hashPtr)
 }
 
 // GetTree resolves a ref to its root tree.
@@ -275,64 +217,4 @@ func (p *Provider) ListTree(tree *object.Tree, path string) ([]protocol.StatEntr
 		entries = append(entries, e)
 	}
 	return entries, nil
-}
-
-// parseRelativeRef parses refs like "HEAD~3", "main~2", "branch^1".
-// Returns the base ref, the offset, and whether it's a relative ref.
-func parseRelativeRef(ref string) (string, int, bool) {
-	// Try ~ (ancestor)
-	if idx := strings.LastIndexByte(ref, '~'); idx >= 0 {
-		base := ref[:idx]
-		numStr := ref[idx+1:]
-		if numStr == "" {
-			return base, 1, true
-		}
-		n, err := strconv.Atoi(numStr)
-		if err == nil && n >= 0 {
-			return base, n, true
-		}
-	}
-
-	// Try ^ (parent)
-	if idx := strings.LastIndexByte(ref, '^'); idx >= 0 {
-		base := ref[:idx]
-		numStr := ref[idx+1:]
-		if numStr == "" {
-			return base, 1, true
-		}
-		n, err := strconv.Atoi(numStr)
-		if err == nil && n >= 0 {
-			return base, n, true
-		}
-	}
-
-	return ref, 0, false
-}
-
-// walkParents walks N parent commits from the given commit.
-func walkParents(commit *object.Commit, n int) (*object.Commit, error) {
-	current := commit
-	for range n {
-		if current.NumParents() == 0 {
-			return nil, protocol.NewError(protocol.ErrInvalidRef,
-				fmt.Sprintf("commit %s has no parent (requested ~%d)", current.Hash, n))
-		}
-		parent, err := current.Parent(0)
-		if err != nil {
-			return nil, protocol.NewError(protocol.ErrInvalidRef,
-				fmt.Sprintf("cannot get parent of %s: %v", current.Hash, err))
-		}
-		current = parent
-	}
-	return current, nil
-}
-
-// isHex returns true if s contains only hex characters.
-func isHex(s string) bool {
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return len(s) > 0
 }

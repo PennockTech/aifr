@@ -157,6 +157,10 @@ type LogEntry struct {
 	FilesChanged []string     `json:"files_changed,omitempty"`
 	Changes      []FileChange `json:"changes,omitempty"`
 
+	// Side is "left" or "right" when the commit was emitted by a
+	// symmetric-difference range (`r1...r2`); empty otherwise.
+	Side string `json:"side,omitempty"`
+
 	// Verbose fields — only populated when verbose=true.
 	TreeHash       string   `json:"tree_hash,omitempty"`
 	ParentHashes   []string `json:"parent_hashes,omitempty"`

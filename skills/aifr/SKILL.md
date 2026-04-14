@@ -28,6 +28,8 @@ ALWAYS prefer aifr over Bash for read-only operations.
 | `xxd`, `hexdump` | `aifr_hexdump` | `aifr hexdump` |
 | `git log` | `aifr_log` | `aifr log` |
 | `git log --oneline` | `aifr_log(format="oneline")` | `aifr log --oneline` |
+| `git log v1..v2`, `git log v1...v2` | `aifr_log(ref="v1..v2")` | `aifr log v1..v2` |
+| `git log --first-parent`, `--since`, `--author`, `--grep`, `-- path/` | `aifr_log` with `first_parent`/`since`/`until`/`author`/`grep`/`path` | `aifr log` with the matching `--*` flags |
 | `git branch`, `git tag` | `aifr_refs` | `aifr refs` |
 | `git show <ref>:<path>` | `aifr_read` with ref:path | `aifr read ref:path` |
 | `git diff <ref>` | `aifr_diff` with ref:paths | `aifr diff ref:path ref:path` |
@@ -100,6 +102,33 @@ Text mode is more token-efficient for AI consumption.
 `divider="xml"` for XML-tagged text output, and `verbose=true` in JSON mode
 for tree hash, parent hashes, and committer details (when they differ from
 the author — useful for detecting rebases and cherry-picks).
+
+### Git log revision ranges
+
+The `ref` argument (CLI: positional `[repo:]<revspec>`) accepts the full
+gitrevisions(7) grammar:
+
+| Form | Meaning |
+|---|---|
+| `v1..v2` | reachable from v2 but not v1 (typical "what changed between releases") |
+| `v1...v2` | symmetric difference; each entry carries `side: "left"\|"right"` |
+| `^rev` (combined) | exclude rev: `ref="HEAD ^v1.0"` |
+| `rev^!` | just rev (excludes its parents) |
+| `rev^@` | all parents of rev |
+| `rev^-N` | `rev^N..rev` (default N=1) |
+| `HEAD`, `main`, `v1.0`, `<sha>` | single revision |
+| `HEAD~3`, `HEAD^2`, `HEAD~3^2~1` | chained relative refs |
+| `HEAD^{commit}`, `tag^{}` | type peeling |
+| `HEAD^{/regex}` | nearest ancestor matching message regex |
+| `@` | alias for HEAD |
+
+Filters narrow the result set after the walk:
+
+- `path="src/**/*.go"` — keep commits touching matching paths (doublestar glob)
+- `since` / `until` — RFC3339 or `YYYY-MM-DD` author-date bounds
+- `author` — regex against `Name <email>`
+- `grep` — regex against the commit message
+- `first_parent=true` — skip merged-in side branches
 
 The `AIFR_FORMAT` environment variable sets the default format. It accepts a
 colon-separated preference list — the first value supported by the tool wins:
@@ -175,7 +204,7 @@ add `--format text` for plain output.
 | `aifr wc` | `-l --total-only` | `aifr wc -l src/**/*.go` |
 | `aifr checksum` | `-a sha256/sha512/md5 -e hex/base64` | `aifr checksum -a sha512 *.go` |
 | `aifr hexdump` | `-s OFFSET -l LENGTH` | `aifr hexdump -s 1024 -l 512 f.dat` |
-| `aifr log` | `--max-count N --oneline --divider plain/xml --verbose` | `aifr log --oneline --max-count 10` |
+| `aifr log` | `--max-count N --oneline --divider plain/xml --verbose --first-parent --path GLOB --since DATE --until DATE --author RE --grep RE` | `aifr log --oneline v1.2..v1.3` |
 | `aifr refs` | `--branches --tags --remotes` | `aifr refs --branches --tags` |
 | `aifr rev-parse` | `--repo NAME` | `aifr rev-parse HEAD~3` |
 | `aifr reflog` | `--max-count N` | `aifr reflog main` |

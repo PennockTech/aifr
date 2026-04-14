@@ -131,6 +131,10 @@ aifr log --max-count 5
 aifr log --oneline --max-count 10
 aifr log --format=text --divider=xml --max-count 3
 aifr log --verbose --max-count 1        # tree hash, parent hashes, committer
+aifr log v2.12.6..v2.12.7               # range: commits between two tags
+aifr log --first-parent main...feature  # symmetric diff, first-parent only
+aifr log --grep '^fix:' --since 2024-01-01 HEAD
+aifr log --path 'internal/**/*.go' v1.0..HEAD
 
 # Compare files across refs
 aifr diff HEAD~1:README.md README.md

@@ -4,10 +4,14 @@ package engine
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/utils/merkletrie"
 
 	"go.pennock.tech/aifr/internal/gitprovider"
@@ -279,21 +283,48 @@ func (e *Engine) Refs(repoName string, branches, tags, remotes bool) (*protocol.
 
 // LogParams controls git log queries.
 type LogParams struct {
-	MaxCount  int    // 0 = default (20)
-	Skip      int    // skip this many commits before collecting entries
-	StartHash string // start from this commit's parent (for pagination)
-	Verbose   bool   // include tree hash, parent hashes, committer details
+	MaxCount    int    // 0 = default (20)
+	Skip        int    // skip this many commits before collecting entries
+	StartHash   string // for pagination: continue past this commit hash
+	StartRev    string // for pagination: original revision spec to re-walk
+	Verbose     bool   // include tree hash, parent hashes, committer details
+	FirstParent bool   // follow only the first parent of each commit
+
+	// Filters — applied after the walk, before pagination slicing.
+	// All are optional; zero values mean "no filtering on this axis".
+
+	// PathGlob: doublestar glob matched against each changed file's
+	// path. A commit is kept if at least one changed file matches.
+	PathGlob string
+	// Since: keep commits whose author date is on or after this time.
+	Since *time.Time
+	// Until: keep commits whose author date is on or before this time.
+	Until *time.Time
+	// Author: regex matched against "Name <email>" of the commit author.
+	Author *regexp.Regexp
+	// Grep: regex matched against the commit message.
+	Grep *regexp.Regexp
 }
 
-// Log returns git commit log entries.
+// Log returns git commit log entries for the given revision spec.
+//
+// The ref argument is parsed as a gitrevisions(7) range expression
+// (see ParseRevSet for the supported grammar). A bare single ref
+// behaves as before — walking history from that tip.
 func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogResponse, error) {
 	repo, _, err := e.openGitRepo(repoName)
 	if err != nil {
 		return nil, err
 	}
 
-	if ref == "" {
-		ref = "HEAD"
+	// Pagination continuations carry the original spec; otherwise use
+	// the supplied ref. An empty spec defaults to HEAD.
+	spec := ref
+	if params.StartRev != "" {
+		spec = params.StartRev
+	}
+	if spec == "" {
+		spec = "HEAD"
 	}
 
 	maxCount := params.MaxCount
@@ -301,46 +332,56 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 		maxCount = 20
 	}
 
-	commit, err := e.gitProvider.ResolveRef(repo, ref)
+	revset, err := e.gitProvider.ParseRevSet(repo, spec)
 	if err != nil {
 		return nil, err
 	}
 
-	// If continuing from a previous page, walk to the start hash's parent.
-	current := commit
-	if params.StartHash != "" {
-		for current != nil && current.Hash.String() != params.StartHash {
-			if current.NumParents() == 0 {
-				current = nil
-				break
-			}
-			current, err = current.Parent(0)
-			if err != nil {
-				current = nil
-				break
-			}
-		}
-		// Move past the start hash to its parent.
-		if current != nil && current.NumParents() > 0 {
-			current, err = current.Parent(0)
-			if err != nil {
-				current = nil
-			}
-		} else {
-			current = nil
-		}
+	walked, err := e.gitProvider.Walk(repo, revset, gitprovider.WalkOptions{
+		FirstParent: params.FirstParent,
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// Skip commits if requested.
-	for skipped := 0; skipped < params.Skip && current != nil; skipped++ {
-		if current.NumParents() == 0 {
-			current = nil
-			break
+	// Apply filters (since/until/author/grep/path) to the walked output
+	// before pagination. Each kept commit retains any pre-computed
+	// changed-file list so we don't recompute it when building entries.
+	type filtered struct {
+		commit  *object.Commit
+		side    gitprovider.Side
+		changes []protocol.FileChange // nil when not yet computed
+	}
+	kept := make([]filtered, 0, len(walked))
+	for _, w := range walked {
+		if !commitPassesScalarFilters(w.Commit, params) {
+			continue
 		}
-		current, err = current.Parent(0)
-		if err != nil {
-			current = nil
-			break
+		var changes []protocol.FileChange
+		if params.PathGlob != "" {
+			changes = collectCommitChanges(w.Commit)
+			if !anyChangePathMatches(changes, params.PathGlob) {
+				continue
+			}
+		}
+		kept = append(kept, filtered{commit: w.Commit, side: w.Side, changes: changes})
+	}
+
+	// Apply pagination: drop everything up to and including StartHash,
+	// then drop Skip more entries.
+	if params.StartHash != "" {
+		for i, k := range kept {
+			if k.commit.Hash.String() == params.StartHash {
+				kept = kept[i+1:]
+				break
+			}
+		}
+	}
+	if params.Skip > 0 {
+		if params.Skip >= len(kept) {
+			kept = nil
+		} else {
+			kept = kept[params.Skip:]
 		}
 	}
 
@@ -350,80 +391,22 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 		Skipped: params.Skip,
 	}
 
-	hitLimit := false
-	for i := 0; i < maxCount && current != nil; i++ {
-		entry := protocol.LogEntry{
-			Hash:        current.Hash.String(),
-			Author:      current.Author.Name,
-			AuthorEmail: current.Author.Email,
-			Date:        current.Author.When.UTC().Format("2006-01-02T15:04:05Z"),
-			Message:     sanitizeMessage(strings.TrimSpace(current.Message)),
-		}
+	hitLimit := len(kept) > maxCount
+	if hitLimit {
+		kept = kept[:maxCount]
+	}
 
-		if params.Verbose {
-			entry.TreeHash = current.TreeHash.String()
-			for _, ph := range current.ParentHashes {
-				entry.ParentHashes = append(entry.ParentHashes, ph.String())
-			}
-			// Include committer fields only when they differ from the author.
-			if current.Committer.Name != current.Author.Name ||
-				current.Committer.Email != current.Author.Email ||
-				!current.Committer.When.Equal(current.Author.When) {
-				entry.Committer = current.Committer.Name
-				entry.CommitterEmail = current.Committer.Email
-				entry.CommitterDate = current.Committer.When.UTC().Format("2006-01-02T15:04:05Z")
+	for _, k := range kept {
+		entry := buildLogEntry(k.commit, k.side, params.Verbose)
+		// Reuse precomputed changes from the path filter, if any.
+		if k.changes != nil {
+			entry.Changes = k.changes
+			entry.FilesChanged = entry.FilesChanged[:0]
+			for _, ch := range k.changes {
+				entry.FilesChanged = append(entry.FilesChanged, ch.Path)
 			}
 		}
-
-		// Get changed files (compare with parent).
-		if current.NumParents() > 0 {
-			parent, pErr := current.Parent(0)
-			if pErr == nil {
-				parentTree, _ := parent.Tree()
-				currentTree, _ := current.Tree()
-				if parentTree != nil && currentTree != nil {
-					changes, cErr := parentTree.Diff(currentTree)
-					if cErr == nil {
-						for _, ch := range changes {
-							name := ch.To.Name
-							if name == "" {
-								name = ch.From.Name
-							}
-							entry.FilesChanged = append(entry.FilesChanged, name)
-
-							action := "M"
-							if a, aErr := ch.Action(); aErr == nil {
-								switch a {
-								case merkletrie.Insert:
-									action = "A"
-								case merkletrie.Delete:
-									action = "D"
-								case merkletrie.Modify:
-									action = "M"
-								}
-							}
-							entry.Changes = append(entry.Changes, protocol.FileChange{
-								Path:   name,
-								Action: action,
-							})
-						}
-					}
-				}
-			}
-		}
-
 		resp.Entries = append(resp.Entries, entry)
-
-		if current.NumParents() == 0 {
-			break
-		}
-		current, err = current.Parent(0)
-		if err != nil {
-			break
-		}
-		if len(resp.Entries) == maxCount && current != nil {
-			hitLimit = true
-		}
 	}
 
 	resp.Total = len(resp.Entries)
@@ -432,10 +415,11 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 	if !resp.Complete && len(resp.Entries) > 0 {
 		lastHash := resp.Entries[len(resp.Entries)-1].Hash
 		tok, tokErr := e.EncodeListContinuation(&ListContinuationToken{
-			Tool:  "log",
-			Path:  repoName,
-			Limit: maxCount,
-			Hash:  lastHash,
+			Tool:    "log",
+			Path:    repoName,
+			Limit:   maxCount,
+			Hash:    lastHash,
+			RevSpec: spec,
 		})
 		if tokErr != nil {
 			return nil, tokErr
@@ -444,6 +428,132 @@ func (e *Engine) Log(repoName, ref string, params LogParams) (*protocol.LogRespo
 	}
 
 	return resp, nil
+}
+
+// ParseLogDate accepts RFC3339, "2006-01-02T15:04:05" (assumed UTC),
+// or a date-only "YYYY-MM-DD" form (midnight UTC). Used by both the
+// CLI's --since/--until flags and the MCP tool's since/until args.
+func ParseLogDate(s string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized date %q (use RFC3339 or YYYY-MM-DD)", s)
+}
+
+// commitPassesScalarFilters checks the cheap (no diff required) filters.
+func commitPassesScalarFilters(c *object.Commit, p LogParams) bool {
+	if p.Since != nil && c.Author.When.Before(*p.Since) {
+		return false
+	}
+	if p.Until != nil && c.Author.When.After(*p.Until) {
+		return false
+	}
+	if p.Author != nil {
+		stamp := c.Author.Name + " <" + c.Author.Email + ">"
+		if !p.Author.MatchString(stamp) {
+			return false
+		}
+	}
+	if p.Grep != nil && !p.Grep.MatchString(c.Message) {
+		return false
+	}
+	return true
+}
+
+// anyChangePathMatches reports whether any change's path satisfies the
+// glob. The pattern is matched with doublestar (the same matcher used
+// elsewhere in aifr) against the changed file's path.
+func anyChangePathMatches(changes []protocol.FileChange, glob string) bool {
+	for _, ch := range changes {
+		if ok, _ := doublestar.PathMatch(glob, ch.Path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// collectCommitChanges returns the (parent[0]→commit) diff as
+// FileChange records, or nil if the commit has no parent or the diff
+// fails. Used to drive the PathGlob filter and to populate FileChange
+// entries on the LogEntry.
+func collectCommitChanges(commit *object.Commit) []protocol.FileChange {
+	if commit.NumParents() == 0 {
+		return nil
+	}
+	parent, err := commit.Parent(0)
+	if err != nil {
+		return nil
+	}
+	parentTree, err := parent.Tree()
+	if err != nil {
+		return nil
+	}
+	currentTree, err := commit.Tree()
+	if err != nil {
+		return nil
+	}
+	diffs, err := parentTree.Diff(currentTree)
+	if err != nil {
+		return nil
+	}
+	out := make([]protocol.FileChange, 0, len(diffs))
+	for _, ch := range diffs {
+		name := ch.To.Name
+		if name == "" {
+			name = ch.From.Name
+		}
+		action := "M"
+		if a, aErr := ch.Action(); aErr == nil {
+			switch a {
+			case merkletrie.Insert:
+				action = "A"
+			case merkletrie.Delete:
+				action = "D"
+			case merkletrie.Modify:
+				action = "M"
+			}
+		}
+		out = append(out, protocol.FileChange{Path: name, Action: action})
+	}
+	return out
+}
+
+// buildLogEntry converts a walked commit into a protocol LogEntry,
+// computing changed-file metadata against the commit's first parent.
+// For multi-parent merges this matches `git log` defaults; combined
+// (`--cc` / `-m`) merge views are out of scope for now.
+func buildLogEntry(commit *object.Commit, side gitprovider.Side, verbose bool) protocol.LogEntry {
+	entry := protocol.LogEntry{
+		Hash:        commit.Hash.String(),
+		Author:      commit.Author.Name,
+		AuthorEmail: commit.Author.Email,
+		Date:        commit.Author.When.UTC().Format("2006-01-02T15:04:05Z"),
+		Message:     sanitizeMessage(strings.TrimSpace(commit.Message)),
+		Side:        string(side),
+	}
+
+	if verbose {
+		entry.TreeHash = commit.TreeHash.String()
+		for _, ph := range commit.ParentHashes {
+			entry.ParentHashes = append(entry.ParentHashes, ph.String())
+		}
+		if commit.Committer.Name != commit.Author.Name ||
+			commit.Committer.Email != commit.Author.Email ||
+			!commit.Committer.When.Equal(commit.Author.When) {
+			entry.Committer = commit.Committer.Name
+			entry.CommitterEmail = commit.Committer.Email
+			entry.CommitterDate = commit.Committer.When.UTC().Format("2006-01-02T15:04:05Z")
+		}
+	}
+
+	for _, ch := range collectCommitChanges(commit) {
+		entry.FilesChanged = append(entry.FilesChanged, ch.Path)
+		entry.Changes = append(entry.Changes, ch)
+	}
+
+	return entry
 }
 
 // sanitizeMessage replaces control characters (especially \r) in commit

@@ -53,7 +53,8 @@ func New(eng *engine.Engine) *Server {
 				"Use aifr_read to read files, aifr_cat to read multiple files with dividers, " +
 				"aifr_search to search content, aifr_list to list directories, " +
 				"aifr_find to find files, aifr_stat for metadata, aifr_refs for git refs, " +
-				"aifr_log for git history, aifr_diff to compare files, " +
+				"aifr_log for git history (single revs and full gitrevisions(7) ranges like v1..v2, v1...v2, ^rev, rev^!, rev^@, rev^-N; with optional path/since/until/author/grep/first_parent filters), " +
+				"aifr_diff to compare files, " +
 				"aifr_pathfind to find commands in PATH-like search lists, " +
 				"aifr_wc to count lines/words/bytes, aifr_checksum for file checksums, " +
 				"aifr_hexdump for binary hex dumps, aifr_rev_parse to resolve git refs, " +

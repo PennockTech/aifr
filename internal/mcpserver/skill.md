@@ -21,6 +21,8 @@ ALWAYS prefer aifr_* tools over Bash for read-only operations.
 | `xxd`, `hexdump` | `aifr_hexdump` |
 | `git log` | `aifr_log` |
 | `git log --oneline` | `aifr_log` with `format="oneline"` |
+| `git log v1..v2`, `git log v1...v2` | `aifr_log` with `ref="v1..v2"` (full gitrevisions(7) range syntax) |
+| `git log --first-parent`, `--since`, `--author`, `--grep`, `-- path/` | `aifr_log` with `first_parent`, `since`, `until`, `author`, `grep`, `path` |
 | `git branch`, `git tag` | `aifr_refs` |
 | `git show <ref>:<path>` | `aifr_read` with ref:path |
 | `git diff <ref>` | `aifr_diff` with ref:paths |
@@ -62,6 +64,15 @@ Examples: `HEAD:README.md`, `main:src/lib.go`, `v2.0:config.toml`, `HEAD~3:file.
 **Output format**: All tools accept `format`: `"json"` (default) or `"text"`. Text is more token-efficient. The `AIFR_FORMAT` env var sets the default (colon-separated preference list, first supported value wins). Explicit `format` parameter overrides env.
 
 **Git log formats**: `aifr_log` supports `format="json"` (default), `format="text"` (git-log style), or `format="oneline"` (compact hash+subject). Text mode accepts `divider="xml"` for XML-tagged output. Use `verbose=true` in JSON mode for tree hash, parent hashes, and committer details.
+
+**Git log ranges**: `ref` accepts the full gitrevisions(7) range grammar:
+- `v1..v2` — commits reachable from v2 but not v1 (typical "what changed between releases")
+- `v1...v2` — symmetric difference; each entry carries `side: "left"|"right"`
+- `^rev` (combined) — exclude rev: e.g. `ref="HEAD ^v1.0"`
+- `rev^!` — just rev (excludes its parents); `rev^@` — all parents of rev; `rev^-N` — `rev^N..rev`
+Single revisions accept HEAD, branches, tags, hashes, `HEAD~3`, `HEAD^2` (correctly the 2nd parent on merges), `HEAD^{commit}`, `HEAD^{/regex}`, `@`, etc.
+
+**Git log filters**: `path="src/**/*.go"` keeps commits touching matching paths; `since`/`until` accept RFC3339 or YYYY-MM-DD; `author`/`grep` are regexes; `first_parent=true` skips merged-in side branches.
 
 **Multi-file**: `aifr_cat(root=".", name="*.go", format="text", divider="xml")` → `<file path="...">content</file>` per file. Use `lines` for head mode, `exclude_path` to skip directories.
 

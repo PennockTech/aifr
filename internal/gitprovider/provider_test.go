@@ -393,31 +393,3 @@ func TestLooksLikePath(t *testing.T) {
 		})
 	}
 }
-
-func TestParseRelativeRef(t *testing.T) {
-	tests := []struct {
-		input      string
-		wantBase   string
-		wantOffset int
-		wantRel    bool
-	}{
-		{"HEAD~3", "HEAD", 3, true},
-		{"main~1", "main", 1, true},
-		{"HEAD~", "HEAD", 1, true},
-		{"branch^1", "branch", 1, true},
-		{"branch^", "branch", 1, true},
-		{"HEAD", "HEAD", 0, false},
-		{"main", "main", 0, false},
-		{"a1b2c3d", "a1b2c3d", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			base, offset, isRel := parseRelativeRef(tt.input)
-			if base != tt.wantBase || offset != tt.wantOffset || isRel != tt.wantRel {
-				t.Errorf("parseRelativeRef(%q) = (%q, %d, %v), want (%q, %d, %v)",
-					tt.input, base, offset, isRel, tt.wantBase, tt.wantOffset, tt.wantRel)
-			}
-		})
-	}
-}

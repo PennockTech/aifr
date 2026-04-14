@@ -137,11 +137,12 @@ func (e *Engine) decodeContinuation(token string) (*continuationToken, error) {
 // ListContinuationToken holds the state for resuming a paginated list/find/search/log/reflog.
 // Exported so that MCP handlers can inspect decoded tokens.
 type ListContinuationToken struct {
-	Tool   string `json:"t"`           // "list", "find", "search", "log", "reflog", "stash_list"
-	Path   string `json:"p"`           // root path or repo name
-	Offset int    `json:"o"`           // number of results already returned
-	Limit  int    `json:"l"`           // page size
-	Hash   string `json:"h,omitempty"` // for log: last commit hash
+	Tool    string `json:"t"`            // "list", "find", "search", "log", "reflog", "stash_list"
+	Path    string `json:"p"`            // root path or repo name
+	Offset  int    `json:"o"`            // number of results already returned
+	Limit   int    `json:"l"`            // page size
+	Hash    string `json:"h,omitempty"`  // for log: last commit hash
+	RevSpec string `json:"rs,omitempty"` // for log ranges: original spec to re-walk
 }
 
 // EncodeListContinuation creates an HMAC-signed list continuation token.
