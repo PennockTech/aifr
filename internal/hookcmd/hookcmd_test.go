@@ -153,6 +153,103 @@ func TestCheckCommand_OutputFormat(t *testing.T) {
 	}
 }
 
+func TestCheckCommand_PermissionRequestOutputFormat(t *testing.T) {
+	input := `{
+		"session_id": "s1",
+		"transcript_path": "/tmp/transcript.jsonl",
+		"cwd": "/tmp/nonexistent",
+		"permission_mode": "default",
+		"tool_name": "Bash",
+		"tool_input": {"command": "head -50 README.md"},
+		"hook_event_name": "PermissionRequest"
+	}`
+
+	result, err := CheckCommand([]byte(input), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	if result.HookSpecificOutput.HookEventName != "PermissionRequest" {
+		t.Errorf("expected PermissionRequest, got %q", result.HookSpecificOutput.HookEventName)
+	}
+	if result.HookSpecificOutput.Decision != "deny" {
+		t.Errorf("expected deny, got %q", result.HookSpecificOutput.Decision)
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+
+	hso, ok := decoded["hookSpecificOutput"].(map[string]any)
+	if !ok {
+		t.Fatal("missing hookSpecificOutput")
+	}
+	if hso["hookEventName"] != "PermissionRequest" {
+		t.Errorf("hookEventName: %v", hso["hookEventName"])
+	}
+	// PermissionRequest must NOT use the PreToolUse-flat fields.
+	if _, present := hso["permissionDecision"]; present {
+		t.Error("PermissionRequest output should not include permissionDecision")
+	}
+	if _, present := hso["permissionDecisionReason"]; present {
+		t.Error("PermissionRequest output should not include permissionDecisionReason")
+	}
+	decision, ok := hso["decision"].(map[string]any)
+	if !ok {
+		t.Fatal("missing decision object")
+	}
+	if decision["behavior"] != "deny" {
+		t.Errorf("behavior: %v", decision["behavior"])
+	}
+	msg, _ := decision["message"].(string)
+	if msg == "" {
+		t.Error("expected non-empty message")
+	}
+}
+
+func TestCheckCommand_DefaultsToPreToolUseShapeWhenEventMissing(t *testing.T) {
+	// If hook_event_name is absent, fall back to PreToolUse shape so old
+	// configurations keep working.
+	input := `{
+		"session_id": "s1",
+		"cwd": "/tmp/nonexistent",
+		"tool_name": "Bash",
+		"tool_input": {"command": "cat main.go"}
+	}`
+
+	result, err := CheckCommand([]byte(input), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	hso := decoded["hookSpecificOutput"].(map[string]any)
+	if hso["hookEventName"] != "PreToolUse" {
+		t.Errorf("expected PreToolUse fallback, got %v", hso["hookEventName"])
+	}
+	if hso["permissionDecision"] != "deny" {
+		t.Errorf("expected permissionDecision=deny, got %v", hso["permissionDecision"])
+	}
+}
+
 func TestCheckCommand_MCPMode(t *testing.T) {
 	input := `{
 		"session_id": "test-session",
