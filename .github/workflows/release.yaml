@@ -65,6 +65,25 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.tag || github.ref }}
 
+      # goreleaser stamps the version from the tag via ldflags, but
+      # `go install go.pennock.tech/aifr/cmd/aifr@vX.Y.Z` builds without
+      # ldflags and reports HARDCODED_VERSION.  Refuse a tag that disagrees
+      # (a hand-made tag, or a manual run against the wrong commit).  This is
+      # in the test job so that it fails before the release environment asks
+      # for approval.
+      - name: Check the tag matches HARDCODED_VERSION
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          have="$(sed -nE 's/^const[[:space:]]+HARDCODED_VERSION[[:space:]]+=[[:space:]]+"([^"]+)".*/\1/p' internal/version/version.go)"
+          if [[ "$have" != "$RELEASE_TAG" ]]; then
+            echo "::error::tag ${RELEASE_TAG@Q} but internal/version/version.go has HARDCODED_VERSION ${have@Q}"
+            exit 1
+          fi
+          echo "Releasing ${have} for tag ${RELEASE_TAG}"
+
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
@@ -103,7 +122,9 @@ jobs:
       - name: Assert expected tag is current
         id: tag-confirm
         env:
-          EXPECTED: ${{ github.ref_name }}
+          # For workflow_dispatch, github.ref_name is the branch the run was
+          # started from, not the tag that was checked out.
+          EXPECTED: ${{ inputs.tag || github.ref_name }}
         shell: bash
         run: |
           ACTUAL="$(git describe --tags --abbrev=0)"
