@@ -174,10 +174,23 @@ tasks:
     deps: [_have_cargo_tool:convco]
     env:
       version_file: "{{.version_embedded_file}}"
+      # Not task_name: env vars reach the next-version:show sub-process, and
+      # the inherited value would win over the one it sets for itself.
+      task_exe: "{{.TASK_EXE}}"
     cmd: |-2
-      nv="$(task next-version:show)"
+      set -euo pipefail
+      # Pass the task-level value on explicitly: when VERSION_OVERRIDE came from
+      # the shell environment, that would otherwise win over the empty override
+      # release:commits-and-tag uses for the post-release -dev bump, which then
+      # repeats the release version.
+      nv="$(env VERSION_OVERRIDE={{shellQuote .VERSION_OVERRIDE}} "$task_exe" next-version:show)"
       sed -i.bak -Ee s'/^(const[[:space:]]+HARDCODED_VERSION[[:space:]]+=[[:space:]]+")[^"]+"/\1'"$nv"'"/' "$version_file"
       rm -f "${version_file}.bak"
+      # sed is silent when nothing matches; make sure the edit happened.
+      if ! grep -qxF "const HARDCODED_VERSION = \"${nv}\"" "$version_file"; then
+        echo >&2 "${task_exe}: {{.TASK}}: failed to set HARDCODED_VERSION to ${nv@Q} in ${version_file@Q}"
+        exit 1
+      fi
 
   release:preflight:
     desc: Verify we're on main and up-to-date with all remotes
@@ -273,9 +286,10 @@ tasks:
     deps: [_have_cargo_tool:convco, release:preflight]
     env:
       release_version:
-        sh: task next-version:show
+        sh: '"{{.TASK_EXE}}" next-version:show'
       message_prefix: "{{.release_tag_message_prefix}}"
       version_file: "{{.version_embedded_file}}"
+      task_exe: "{{.TASK_EXE}}"
     cmds:
       - '[[ -n "${message_prefix:-}" ]] || { echo >&2 "missing message_prefix, Taskfile problem"; exit 70; }'
       - task: next-version:write
@@ -284,7 +298,8 @@ tasks:
       - task: next-version:write
         vars:
           VERSION_OVERRIDE: ""
-      - 'git commit -o "$version_file" -m "chore: bump hard-coded version to $(env VERSION_OVERRIDE="" task next-version:show)"'
+      - 'git commit -o "$version_file" -m "chore: bump hard-coded version to $(env VERSION_OVERRIDE="" "$task_exe" next-version:show)"'
+      - 'echo "Review, then publish with:  git push origin main ${release_version}"'
 
   _have_cargo_tool:*:  # shim for when the binary name == crate name
     internal: true
